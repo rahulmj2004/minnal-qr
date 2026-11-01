@@ -1,6 +1,6 @@
 /* Minnal-Q SOS service worker: caches the app shell so it opens like an installed app.
    API calls always go to the network (an SOS must never be served from cache). */
-const CACHE = "minnal-sos-v2";
+const CACHE = "minnal-sos-v3";
 const SHELL = ["/sos", "/static/sos.css", "/static/sos.js", "/manifest.webmanifest",
   "/static/icons/icon-192.png", "/static/icons/icon-512.png"];
 

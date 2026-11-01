@@ -409,6 +409,24 @@ function renderEvidence() {
 
 /* ---------------- live SOS from phones (/sos) ---------------- */
 const sosLayer = L.layerGroup().addTo(map);
+const fleetLayer = L.layerGroup().addTo(map);
+
+/* Q-Fleet: both ambulances' quantum-assigned routes */
+function drawFleet(f) {
+  fleetLayer.clearLayers();
+  if (!f) return;
+  for (const a of f.ambulances) {
+    if (!a.route) continue;
+    const pts = a.route.path.map((p) => [p[0], p[1]]);
+    L.polyline(pts, { color: "#fff", weight: 9, opacity: .8 }).addTo(fleetLayer);
+    L.polyline(pts, { color: a.color, weight: 5, opacity: .95, dashArray: a.name.endsWith("B") ? "10 8" : null })
+      .bindTooltip(`${a.name}: ${a.route.label}`).addTo(fleetLayer);
+    const b = nodeByName(a.base);
+    if (b) L.marker([b.lat, b.lon], { icon: L.divIcon({ className: "", iconSize: [34, 34], iconAnchor: [17, 17],
+      html: `<div class="fleet-amb" style="--c:${a.color}">🚑<b>${a.name.slice(-1)}</b></div>` }) })
+      .bindTooltip(`${a.name} base: ${a.base}`).addTo(fleetLayer);
+  }
+}
 let sosVersion = 0, sosBooted = false;
 
 function renderSos(feed) {
@@ -417,6 +435,7 @@ function renderSos(feed) {
   box.classList.toggle("hidden", recs.length === 0);
   body.innerHTML = "";
   sosLayer.clearLayers();
+  if (!recs.length) fleetLayer.clearLayers();
   for (const r of recs) {
     const sev = SEV[r.severity];
     body.append(el("div", { class: "sos-item" },
@@ -424,6 +443,8 @@ function renderSos(feed) {
       el("div", {}, el("span", { class: "eta" }, `${Math.round(r.eta)} min`), ` ETA · stop ${r.stop}/${r.stops} · `,
         el("b", { style: `color:${sev.color}` }, r.severity_label)),
       el("div", { class: "muted" }, `QAOA ${r.qubits} qubits · nearest-first ETA ${Math.round(r.eta_greedy)} min · GPS ${r.distance_km} km from junction`),
+      r.fleet ? el("div", { class: "fleet-line" },
+        el("b", {}, "⚛ Q-Fleet "), `${r.fleet.your_ambulance} · ETA ${Math.round(r.fleet.eta)} min (one ambulance: ${Math.round(r.fleet.eta_single)}) · ${r.fleet.assign_quantum.qubits}-qubit assignment${r.fleet.assign_quantum.optimal ? " ✓ optimal" : ""}`) : "",
       el("ul", {}, ...r.log.slice(-3).map((l) => el("li", {}, l)))));
     L.marker([r.lat, r.lon], { icon: L.divIcon({ className: "", iconSize: [30, 30], iconAnchor: [15, 28], html: '<div class="phone-pin">📱</div>' }) })
       .bindTooltip(`SOS #${r.id}: ${r.kind_label} (phone GPS)`).addTo(sosLayer);
@@ -449,6 +470,7 @@ async function pollSos() {
         seg("slots", state.meta.slots, state.slot, (o) => { state.slot = o; changed(); });
         state.result = a.result; state.dirty = false;
         renderPatients(); drawPins(); drawRoutes(); renderResults(); renderQuantum(); renderRoutesTable(); renderEvidence();
+        drawFleet(a.fleet);
         $("run").textContent = "⚡ Re-optimize with QAOA";
         $("sosFeed").classList.remove("flash"); void $("sosFeed").offsetWidth; $("sosFeed").classList.add("flash");
         toast(`🆘 SOS #${a.id}: ${a.kind_label} near ${a.junction}. QAOA dispatch, ETA ${Math.round(a.eta)} min`);

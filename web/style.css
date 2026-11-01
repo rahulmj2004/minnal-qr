@@ -264,3 +264,10 @@ details label { font-size: 12px; color: var(--muted); font-weight: 600; }
 .sos-item .muted { color: var(--muted); font-size: 12px; }
 .sos-item ul { margin: 4px 0 0; padding-left: 16px; color: var(--muted); font-size: 12px; }
 .phone-pin { font-size: 26px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.4)); }
+
+/* Q-Fleet on the dashboard */
+.fleet-amb { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 17px; position: relative;
+  background: #fff; border: 3px solid var(--c); box-shadow: 0 4px 12px rgba(0,0,0,.3); }
+.fleet-amb b { position: absolute; right: -6px; bottom: -6px; background: var(--c); color: #fff; font-size: 10px; border-radius: 6px; padding: 0 4px; }
+.fleet-line { margin-top: 4px; font-size: 12px; color: #6D28D9; }
+.fleet-line b { color: #6D28D9; }

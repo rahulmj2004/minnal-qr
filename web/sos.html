@@ -110,6 +110,8 @@
       <div><span>Your stop</span><b id="sStop">–</b></div>
       <div><span>Quantum</span><b id="sQ">–</b></div>
     </div>
+    <div class="fleet hidden" id="sFleet"></div>
+    <button class="qbtn" id="openLens">⚛ Qubit Lens <small>See how the quantum computer chose your ambulance</small></button>
     <div class="route" id="sRoute"></div>
     <ul class="log" id="sLog"></ul>
     <div class="row">
@@ -118,6 +120,35 @@
     </div>
     <p class="fine">Times are simulated from the Minnal-Q Kochi road model. Not a real dispatch.
       Real emergency: <a href="tel:112">call 112</a>.</p>
+  </section>
+
+  <!-- ============ Qubit Lens ============ -->
+  <section id="qlens" class="screen">
+    <header class="top">
+      <button class="back" id="lensBack" aria-label="Back">‹ Back</button>
+      <div class="gps ok">⚛ Qubit Lens</div>
+    </header>
+    <h2 class="lens-h">How quantum chose <span>your ambulance</span></h2>
+    <div class="lens-card">
+      <div class="lens-step">Stage 1 · Q-Assign</div>
+      <div class="lens-sub" id="lensSub1">Each qubit = "this ambulance takes this patient"</div>
+      <div class="qgrid" id="qgrid"></div>
+      <div class="bits" id="bits">superposition…</div>
+    </div>
+    <div class="lens-card">
+      <div class="lens-step">Quantum vote</div>
+      <div class="lens-sub" id="voteSub">Measured 4,096 times</div>
+      <div class="votes" id="votes"></div>
+    </div>
+    <div class="lens-row">
+      <div class="lens-kpi"><b id="kBoost">–</b><span>more often than random</span></div>
+      <div class="lens-kpi"><b id="kValid">–</b><span>valid answers</span></div>
+      <div class="lens-kpi ok"><b id="kOpt">–</b><span>verified optimal</span></div>
+    </div>
+    <div class="lens-card">
+      <div class="lens-step">Stage 2 · Q-Route</div>
+      <div class="lens-sub" id="lensRoute">–</div>
+    </div>
   </section>
 
   <div id="toast" class="toast hidden"></div>

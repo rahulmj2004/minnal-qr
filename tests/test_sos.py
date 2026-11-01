@@ -61,3 +61,42 @@ def test_vitals_severity_raises_sos_severity():
     assert low["severity"] == 4  # vitals never lower the emergency type's severity
     assert c.post("/api/sos", json={"lat": 10.0, "lon": 76.3, "severity": 9}).status_code == 422
     c.post("/api/sos/reset")
+
+
+def test_q_fleet_two_ambulances():
+    """Q-Fleet: stage-1 QAOA assigns patients to 2 ambulances (verified optimal); never slower than one ambulance."""
+    from fastapi.testclient import TestClient
+    from server import app
+    c = TestClient(app)
+    c.post("/api/sos/reset")
+    c.post("/api/sos", json={"lat": 10.0159, "lon": 76.3419, "kind": "cardiac"})
+    r = c.post("/api/sos", json={"lat": 9.9970, "lon": 76.2990, "kind": "accident"}).json()
+    f = r["fleet"]
+    aq = f["assign_quantum"]
+    assert aq["qubits"] == 2 * len(aq["patients"]) and aq["optimal"]
+    assert aq["p_opt"] > aq["random_p_opt"]                      # QAOA concentrates on the optimum
+    assert sorted(i for a in f["ambulances"] for i in a["patients"]) == list(range(len(aq["patients"])))
+    assert f["eta"] <= f["eta_single"] and f["weighted"] < f["weighted_single"]
+    assert len(aq["bits"]) == aq["qubits"] and sum(aq["bits"]) == len(aq["patients"])
+    assert r["quantum"]["bits"] and r["quantum"]["shots"] == 4096
+    c.post("/api/sos/reset")
+
+
+def test_assign_qubo_ground_state_is_best_assignment():
+    """The assignment QUBO's lowest energy equals the best assignment found by checking all of them."""
+    from itertools import product
+    import numpy as np
+    from minnal_q import make_scenario, Incident
+    from minnal_q.fleet import auto_assign_qubo, encode_assign
+    from minnal_q.qubo import all_energies
+    pts = [("Edappally", 1), ("Ernakulam North", 2), ("Kakkanad", 4)]
+    sc = make_scenario("Ambulance Base (Kalamassery)", "Lakeshore Hospital", [Incident(l, s) for l, s in pts],
+                       "Morning peak (9 AM)")
+    from minnal_q.city import build_graph, travel_matrix
+    bases = ["Ambulance Base (Kalamassery)", "Vyttila"]
+    locs = [l for l, _ in pts]
+    times, _ = travel_matrix(build_graph("Morning peak (9 AM)"), bases + locs + ["Lakeshore Hospital"])
+    q = auto_assign_qubo(times, bases, locs, [i.weight for i in sc.incidents])
+    E = all_energies(q)
+    best = min(q.energy(encode_assign(a, 2, 3)) for a in product(range(2), repeat=3))
+    assert np.isclose(E.min(), best)

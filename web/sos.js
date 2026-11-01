@@ -266,7 +266,34 @@ function renderStatus() {
   $("sSev").textContent = r.severity_label;
   $("sStop").textContent = `${r.stop} of ${r.stops}`;
   $("sQ").textContent = `${r.qubits} qubits · ${r.optimal ? "optimal" : "near-opt"}`;
-  $("sRoute").textContent = "Route: " + r.route;
+  $("sRoute").textContent = "Single-ambulance route: " + r.route;
+  const f = r.fleet;
+  if (f) {
+    $("eta").textContent = Math.round(f.eta);
+    const saved = Math.round(f.eta_single - f.eta);
+    $("etaSub").textContent = saved > 0
+      ? `${f.your_ambulance} from ${f.your_base} · ${saved} min faster than one ambulance (${Math.round(f.eta_single)} min)`
+      : `${f.your_ambulance} from ${f.your_base} · Q-Fleet dispatch`;
+    const mineAmb = f.ambulances[f.assign[f.you]], j0 = mineAmb.patients.indexOf(f.you);
+    $("sStop").textContent = `${mineAmb.route.order.indexOf(j0) + 1} of ${mineAmb.patients.length} · ${f.your_ambulance.slice(-1)}`;
+    $("sQ").textContent = `${f.assign_quantum.qubits}+${f.route_qubits} qubits · ${f.assign_quantum.optimal ? "optimal" : "near-opt"}`;
+    const box = $("sFleet"); box.classList.remove("hidden"); box.innerHTML = "";
+    const head = document.createElement("div"); head.className = "fleet-h";
+    head.innerHTML = `<b>Q-Fleet</b> · 2 ambulances · ${f.assign_quantum.qubits}-qubit quantum assignment`;
+    box.append(head);
+    for (const a of f.ambulances) {
+      const row = document.createElement("div"); row.className = "fleet-row" + (a.name === f.your_ambulance ? " you" : "");
+      row.style.setProperty("--c", a.color);
+      const who = a.patients.map((i) => f.assign_quantum.patients[i] + (i === f.you ? " (you)" : "")).join(", ") || "standby";
+      row.innerHTML = `<i></i><span><b></b><small></small></span>`;
+      row.querySelector("b").textContent = `${a.name} · ${a.base}`;
+      row.querySelector("small").textContent = who;
+      box.append(row);
+    }
+    const w = document.createElement("div"); w.className = "fleet-w";
+    w.textContent = `Severity-weighted waiting: ${Math.round(f.weighted)} vs ${Math.round(f.weighted_single)} with one ambulance (−${Math.round(100 * (1 - f.weighted / f.weighted_single))}%)`;
+    box.append(w);
+  }
   $("sLog").innerHTML = r.log.map((l) => `<li>${l}</li>`).join("");
 }
 $("replay").onclick = () => {
@@ -280,6 +307,70 @@ $("replay").onclick = () => {
   runCall(false);
 };
 $("again").onclick = () => show("home");
+
+/* ---------------- Qubit Lens: watch the qubits pick the answer ---------------- */
+function lensData(r) {
+  const f = r.fleet;
+  if (f) {
+    const aq = f.assign_quantum;
+    return { rows: aq.ambulances, cols: aq.patients.map((p, i) => (i === f.you ? "You" : p)), you: f.you, bits: aq.bits,
+             shots: aq.shots, boost: aq.p_opt / aq.random_p_opt, valid: aq.feasible, optimal: aq.optimal, top: aq.top,
+             sub: `${aq.qubits} qubits: ${aq.m} ambulances × ${aq.n} patients. A lit qubit = that ambulance takes that patient.`,
+             route: `${f.your_ambulance}'s stops: ${f.ambulances[f.assign[f.you]].route.label}` +
+                    (f.route_qubits ? ` · ordered by QAOA on ${f.route_qubits} qubits` : "") };
+  }
+  const q = r.quantum;  // single ambulance: the routing grid (patients × stop order)
+  return { rows: q.names.map((p, i) => (i === q.you ? "You" : p)), cols: q.names.map((_, i) => `Stop ${i + 1}`), you: -1,
+           bits: q.bits, shots: q.shots, boost: q.p_opt / q.random_p_opt, valid: q.feasible, optimal: q.checks_ok, top: q.top,
+           sub: `${q.n * q.n} qubits: patients × stop order. A lit qubit = that patient at that stop.`, route: r.route };
+}
+let lensTimer = null;
+function openLens() {
+  const r = st.rec; if (!r) return;
+  const d = lensData(r);
+  show("qlens");
+  $("lensSub1").textContent = d.sub;
+  const g = $("qgrid"); g.innerHTML = "";
+  g.style.gridTemplateColumns = `minmax(76px, auto) repeat(${d.cols.length}, 1fr)`;
+  g.append(document.createElement("span"));
+  d.cols.forEach((c, i) => { const h = document.createElement("span"); h.className = "qh" + (i === d.you ? " you" : ""); h.textContent = c; g.append(h); });
+  const cells = [];
+  d.rows.forEach((rname, a) => {
+    const h = document.createElement("span"); h.className = "qr"; h.textContent = rname; g.append(h);
+    d.cols.forEach((_, i) => { const c = document.createElement("span"); c.className = "qb" + (i === d.you ? " youcol" : ""); g.append(c); cells.push(c); });
+  });
+  const bitsEl = $("bits"); bitsEl.className = "bits"; bitsEl.textContent = "superposition…";
+  ["kBoost", "kValid", "kOpt"].forEach((k) => ($(k).textContent = "…"));
+  $("votes").innerHTML = ""; $("voteSub").textContent = `Measuring ${d.shots.toLocaleString()} times…`;
+  $("lensRoute").textContent = d.route;
+  clearInterval(lensTimer);
+  let ticks = 0;
+  buzz(20);
+  lensTimer = setInterval(() => {  // superposition: every qubit flickers
+    cells.forEach((c) => { c.style.opacity = (0.15 + Math.random() * 0.85).toFixed(2); c.classList.toggle("on", Math.random() > 0.5); });
+    if (++ticks > 16) { clearInterval(lensTimer); collapse(); }
+  }, 110);
+  function collapse() {  // measurement: the qubits settle on the chosen answer
+    cells.forEach((c, k) => { c.style.opacity = 1; c.classList.toggle("on", d.bits[k] === 1); c.classList.add("settled"); });
+    bitsEl.textContent = d.bits.join(""); bitsEl.classList.add("done");
+    buzz([30, 40, 60]);
+    $("voteSub").textContent = `Measured ${d.shots.toLocaleString()} times. Most-measured valid answers:`;
+    const max = Math.max(...d.top.map((t) => t.shots), 1);
+    d.top.slice(0, 4).forEach((t, n) => {
+      const row = document.createElement("div"); row.className = "vote" + (t.optimal ? " best" : "");
+      row.innerHTML = `<span class="vl"></span><span class="vb"><i></i></span><span class="vn"></span>`;
+      row.querySelector(".vl").textContent = (t.optimal ? "✓ " : "") + t.label;
+      row.querySelector(".vn").textContent = t.shots;
+      $("votes").append(row);
+      setTimeout(() => (row.querySelector("i").style.width = `${(100 * t.shots) / max}%`), 60 + n * 120);
+    });
+    $("kBoost").textContent = `${d.boost.toFixed(1)}×`;
+    $("kValid").textContent = `${Math.round(d.valid * 100)}%`;
+    $("kOpt").textContent = d.optimal ? "✓ Yes" : "near";
+  }
+}
+$("openLens").onclick = openLens;
+$("lensBack").onclick = () => { clearInterval(lensTimer); show("status"); };
 
 /* ---------------- boot ---------------- */
 renderKinds();

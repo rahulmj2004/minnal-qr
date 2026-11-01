@@ -18,7 +18,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from minnal_q import DEMO_INCIDENTS, SLOTS, Incident, make_scenario, route_label
-from minnal_q.city import NODES, build_graph
+from minnal_q.city import NODES, build_graph, travel_matrix
+from minnal_q.fleet import auto_assign_qubo, solve_assign
 from minnal_q.classical import all_routes, brute_force, greedy_nearest, route_cost, time_only
 from minnal_q.qaoa import solve_qaoa
 from minnal_q.qubo import all_energies, auto_penalty, bits_to_x, decode, encode, to_ising
@@ -223,8 +224,80 @@ def _dispatch(rec):
         result=res, status="dispatched",
         quantum=_quantum_view(res, board, idx),
     )
+    try:
+        fleet = run_big_stack(_fleet, SOS_SLOT, SOS_HOSPITAL, key[2], 2.0)
+        rec["fleet"] = _fleet_view(fleet, minnal, idx)
+    except Exception as e:  # Q-Fleet is an add-on; single-ambulance dispatch above always stands
+        rec["fleet"] = None
+        rec.setdefault("log", []).append(f"Q-Fleet unavailable: {e}")
     _sos["board"] = board
     return rec
+
+
+# ---------------------------------------------------------------------------------------------
+# Q-Fleet: two ambulances. Stage 1 QAOA assigns patients to ambulances; stage 2 QAOA orders each one's stops.
+# ---------------------------------------------------------------------------------------------
+FLEET = [  # (name, base node, map colour)
+    ("Ambulance A", BASE, "#F0233B"),
+    ("Ambulance B", "Vyttila", "#2563EB"),
+]
+
+
+@lru_cache(maxsize=64)
+def _fleet(slot, hospital, patients, lam=2.0):
+    incidents = [Incident(l, s) for l, s in patients]
+    locs, weights = [i.location for i in incidents], [i.weight for i in incidents]
+    bases = [b for _, b, _ in FLEET]
+    g = build_graph(slot)
+    times, _ = travel_matrix(g, list(dict.fromkeys(bases + locs + [hospital])))
+    q = auto_assign_qubo(times, bases, locs, weights)
+    ar = solve_assign(q, reps=2)
+    assign = ar.assign
+    if assign is None:  # no valid sample: fall back to the exhaustive optimum (never happened in tests)
+        from minnal_q.fleet import decode_assign
+        assign = decode_assign(bits_to_x(int(np.argmin(all_energies(q))), q.num_qubits), q.m, q.n)
+    arrivals = [0.0] * len(incidents)
+    ambulances, route_qubits = [], 0
+    for a, (name, base, color) in enumerate(FLEET):
+        mine = [i for i in range(len(incidents)) if assign[i] == a]
+        amb = {"name": name, "base": base, "color": color, "patients": mine, "route": None, "qubits": 0}
+        if mine:
+            sc = make_scenario(base, hospital, [incidents[i] for i in mine], slot)
+            if len(mine) >= 2:
+                r2 = solve_qaoa(auto_penalty(sc, lam), reps=1)
+                order = r2.best_order or brute_force(sc, lam).order
+                amb["qubits"] = len(mine) ** 2
+                route_qubits += len(mine) ** 2
+            else:
+                order = (0,)
+            route = _route(sc, g, order, lam)
+            route["label"] = " → ".join([name] + [incidents[mine[j]].location for j in order] + [hospital])
+            for j, i in enumerate(mine):
+                arrivals[i] = route["arrivals"][j]
+            amb["route"] = route
+        ambulances.append(amb)
+    top = max(range(len(incidents)), key=lambda i: incidents[i].severity)
+    names = [n for n, _, _ in FLEET]
+    return {
+        "ambulances": ambulances, "assign": list(assign), "arrivals": arrivals,
+        "critical": arrivals[top], "weighted": round(sum(w * t for w, t in zip(weights, arrivals)), 2),
+        "assign_quantum": {
+            "qubits": ar.qubits, "reps": ar.reps, "shots": ar.shots, "p_opt": ar.p_opt, "random_p_opt": ar.random_p_opt,
+            "feasible": ar.feasible, "optimal": ar.optimal, "bits": ar.bits, "penalty": round(ar.penalty, 1),
+            "seconds": ar.seconds, "m": q.m, "n": q.n, "ambulances": names, "patients": locs,
+            "top": [{"label": ", ".join(f"{locs[i]}→{names[a][-1]}" for i, a in enumerate(t)), "shots": c, "optimal": o}
+                    for t, c, o in ar.top],
+        },
+        "route_qubits": route_qubits,
+    }
+
+
+def _fleet_view(fleet, single, you):
+    """Per-SOS summary of the Q-Fleet plan versus a single ambulance."""
+    amb = fleet["ambulances"][fleet["assign"][you]]
+    return dict(fleet, you=you, your_ambulance=amb["name"], your_base=amb["base"], your_color=amb["color"],
+                eta=fleet["arrivals"][you], eta_single=single["arrivals"][you],
+                critical_single=single["critical"], weighted_single=single["weighted"])
 
 
 def _quantum_view(res, board, you):
