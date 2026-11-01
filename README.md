@@ -11,6 +11,8 @@
 
 *Minnal* is Malayalam for lightning. **Q** stands for the quantum (QAOA) engine.
 
+![Minnal-Q web app](docs/screenshot.png)
+
 ---
 
 ## 1. Problem statement
@@ -123,16 +125,29 @@ driving. At evening peak Minnal-Q is better on both measures.
 Random guessing would pick a valid route 1.2% (9 qubits) or 0.04% (16 qubits) of the time. QAOA concentrates
 probability on valid, low-cost routes, and more so at p = 2.
 
-## 6. Setup and run (reproducible)
+## 6. Demo web app
+
+A single-page web app served by FastAPI (no Streamlit):
+
+- **Interactive Kochi map** (Leaflet + OpenStreetMap): patients as severity-coloured pins. Click any junction to add a patient.
+- **Three routes drawn on real roads:** Minnal-Q (quantum), nearest-first (today) and fastest (ignores severity).
+- **▶ Play ambulance:** animates the ambulance along the Minnal-Q route with a live minute counter.
+- **Results:** critical-patient arrival, minutes saved, total time, QAOA vs random; patient timeline.
+- **Quantum lab:** P(optimal) for random vs p = 1 vs p = 2, measured-route histogram, qubit grid with the optimal route lit, training curve.
+- **All routes and Evidence:** every possible order with tags, live correctness checks, transparency table, references.
+
+Quantum runs execute in a dedicated large-stack thread, one at a time (`minnal_q/runtime.py`), so several browser tabs are safe.
+
+## 6b. Setup and run (reproducible)
 
 ```bash
 git clone <this repo> && cd quantum-hackday
 python3.11 -m venv qiskit-env && source qiskit-env/bin/activate
 pip install -r requirements.txt
 
-pytest -q                     # 18 tests: QUBO = route cost, ground state = brute force, Ising = QUBO, QAOA > random
+pytest -q                     # 22 tests: QUBO = route cost, ground state = brute force, Ising = QUBO, QAOA > random, API
 python run_experiments.py     # regenerates results/benchmark.csv (≈ 1 min)
-streamlit run app.py          # demo at http://localhost:8501
+uvicorn server:app --port 8077   # web app at http://localhost:8077
 
 # optional real hardware (needs an IBM Quantum API key)
 python save_key.py            # stores the key in ~/.qiskit, not in this repo
@@ -151,10 +166,11 @@ minnal_q/scenario.py    Patients, severities, exact route evaluation (arrival ti
 minnal_q/classical.py   Brute force (exact), nearest-first greedy, fastest route
 minnal_q/qubo.py        QUBO builder, auto-penalty, QUBO→Ising, decode/encode
 minnal_q/qaoa.py        qaoa_ansatz + COBYLA + Aer SamplerV2, metrics
-app.py                  Streamlit demo (map, quantum lab, comparison, evidence)
+server.py               FastAPI backend: /api/meta, /api/optimize (runs QAOA, returns routes + metrics)
+web/                    Frontend: Leaflet map, animated ambulance, results, Chart.js quantum lab, evidence
 run_experiments.py      Benchmark → results/benchmark.csv
 run_ibm.py              Optional IBM hardware run → results/ibm_run.json
-tests/                  18 unit tests
+tests/                  22 tests (QUBO/Ising/QAOA + API)
 docs/                   Concept, quantum explainer and use-case PDFs
 ```
 
@@ -162,7 +178,7 @@ docs/                   Concept, quantum explainer and use-case PDFs
 
 | | |
 |---|---|
-| **Implemented** | Road graph + traffic, Dijkstra, QUBO, QUBO→Ising, QAOA + COBYLA, Aer sampling, three baselines, Streamlit app, 18 tests |
+| **Implemented** | Road graph + traffic, Dijkstra, QUBO, QUBO→Ising, QAOA + COBYLA, Aer sampling, three baselines, web app (FastAPI + Leaflet), 22 tests |
 | **Simulated** | All reported QAOA results use Qiskit Aer / statevector simulation (no hardware noise) |
 | **Synthetic** | Travel times, traffic multipliers and patient locations. Place names are real Kochi locations; coordinates are approximate |
 | **Measured** | Everything in Section 5 (`results/benchmark.csv`) |

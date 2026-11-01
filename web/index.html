@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Minnal-Q · Quantum Ambulance Routing</title>
+  <meta name="description" content="Severity- and traffic-aware multi-stop ambulance routing with QAOA (Qiskit).">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Malayalam:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="bolt">⚡</span>
+      <span class="name">Minnal-Q</span>
+      <span class="ml">മിന്നൽ</span>
+      <span class="tag">Lightning-fast quantum routing for life-critical emergencies</span>
+    </div>
+    <div class="chips">
+      <span class="chip">Challenge 1 · Emergency Vehicle Routing</span>
+      <span class="chip q" id="chipQubits">QAOA</span>
+      <span class="chip">Qiskit 2.6 · AerSimulator</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- ============ controls ============ -->
+    <aside class="panel controls">
+      <section>
+        <h3>🚦 Time of day</h3>
+        <div class="seg" id="slots"></div>
+      </section>
+
+      <section>
+        <div class="row-between">
+          <h3>🧑‍⚕️ Patients <span class="muted" id="qubitHint"></span></h3>
+          <button class="ghost small" id="addPatient" title="Add patient">+ Add</button>
+        </div>
+        <div id="patients"></div>
+        <p class="hint">Tip: click any grey junction on the map to add a patient there.</p>
+      </section>
+
+      <section>
+        <h3>🏥 Destination hospital</h3>
+        <select id="hospital"></select>
+      </section>
+
+      <section>
+        <div class="row-between"><h3>⚖️ Severity priority λ</h3><b id="lamVal">2.0</b></div>
+        <input type="range" id="lam" min="0" max="5" step="0.5" value="2">
+        <div class="row-between hint"><span>fastest route</span><span>critical first</span></div>
+      </section>
+
+      <details>
+        <summary>⚛️ Quantum settings</summary>
+        <div class="sub">
+          <label>QAOA depth p</label>
+          <div class="seg" id="reps"></div>
+          <label>Objective</label>
+          <div class="seg" id="objective"></div>
+          <p class="hint">Backend: qiskit_aer.AerSimulator · 4,096 shots · COBYLA, 3 restarts · seed 7</p>
+        </div>
+      </details>
+
+      <button class="primary" id="run">⚡ Optimize with QAOA</button>
+      <button class="ghost" id="demo">↺ Load Kochi demo</button>
+    </aside>
+
+    <!-- ============ map ============ -->
+    <section class="mapwrap">
+      <div id="map"></div>
+      <div class="legend" id="legend">
+        <div><i style="background:var(--minnal)"></i>Minnal-Q (quantum)</div>
+        <div><i style="background:var(--greedy)"></i>Nearest-first (today)</div>
+        <div><i style="background:var(--fastest)"></i>Fastest, ignores severity</div>
+      </div>
+      <div class="player">
+        <button id="play" disabled>▶ Play ambulance</button>
+        <span id="clock">⏱ 0.0 min</span>
+      </div>
+      <div class="loading hidden" id="loading">
+        <div class="spinner"></div>
+        <div id="loadingText">Training QAOA…</div>
+      </div>
+    </section>
+
+    <!-- ============ results ============ -->
+    <aside class="panel results">
+      <nav class="tabs">
+        <button class="tab active" data-tab="t-results">Results</button>
+        <button class="tab" data-tab="t-quantum">Quantum lab</button>
+        <button class="tab" data-tab="t-routes">All routes</button>
+        <button class="tab" data-tab="t-evidence">Evidence</button>
+      </nav>
+
+      <div class="tabpane active" id="t-results">
+        <div class="empty" id="emptyState">Press <b>⚡ Optimize with QAOA</b> to plan the route.</div>
+        <div id="resultsBody" class="hidden">
+          <div class="kpis">
+            <div class="kpi hot"><div class="l">Critical patient reached</div><div class="v" id="kCrit">–</div><div class="s" id="kCritS"></div></div>
+            <div class="kpi hot"><div class="l">Time saved</div><div class="v" id="kSaved">–</div><div class="s">for the critical patient</div></div>
+            <div class="kpi"><div class="l">Total route</div><div class="v" id="kTotal">–</div><div class="s" id="kTotalS"></div></div>
+            <div class="kpi q"><div class="l">QAOA vs random</div><div class="v" id="kAmp">–</div><div class="s" id="kAmpS"></div></div>
+          </div>
+          <div class="banner hidden" id="banner"></div>
+          <h4>Routes</h4>
+          <div id="routeCards"></div>
+          <h4>When is each patient reached?</h4>
+          <div id="timeline" class="timeline"></div>
+        </div>
+      </div>
+
+      <div class="tabpane" id="t-quantum">
+        <div class="kpis small">
+          <div class="kpi q"><div class="l">Qubits</div><div class="v" id="qQubits">–</div></div>
+          <div class="kpi q"><div class="l">P(optimal)</div><div class="v" id="qPopt">–</div></div>
+          <div class="kpi q"><div class="l">Valid samples</div><div class="v" id="qFeas">–</div></div>
+          <div class="kpi q"><div class="l">Circuit depth</div><div class="v" id="qDepth">–</div></div>
+        </div>
+        <h4>How often QAOA hits the best route</h4>
+        <div class="chartbox"><canvas id="cProb"></canvas></div>
+        <h4>Routes measured (valid samples)</h4>
+        <div class="chartbox tall"><canvas id="cSampled"></canvas></div>
+        <h4>Problem → qubits <span class="muted">(optimal route lit)</span></h4>
+        <div id="qgrid"></div>
+        <h4>Hybrid training loop</h4>
+        <div class="chartbox"><canvas id="cTrain"></canvas></div>
+        <p class="hint" id="qMeta"></p>
+      </div>
+
+      <div class="tabpane" id="t-routes">
+        <p class="hint" id="routesHint"></p>
+        <div class="tablewrap"><table class="tbl" id="routesTable"></table></div>
+      </div>
+
+      <div class="tabpane" id="t-evidence">
+        <h4>Live correctness checks</h4>
+        <div id="checks"></div>
+        <h4>Transparency</h4>
+        <table class="tbl kv">
+          <tr><th>Implemented</th><td>Kochi graph + traffic, Dijkstra, QUBO, QUBO→Ising, QAOA (qaoa_ansatz) + COBYLA, Aer sampling, 3 baselines, this web app, tests</td></tr>
+          <tr><th>Simulated</th><td>All QAOA results use Qiskit Aer / statevector simulation (no hardware noise)</td></tr>
+          <tr><th>Synthetic</th><td>Travel times, traffic multipliers, patient locations (real Kochi place names, approximate coordinates)</td></tr>
+          <tr><th>Measured</th><td>P(optimal), valid-sample rate, depth, gate counts, runtime</td></tr>
+          <tr><th>Modelling</th><td>QUBO uses a quadratic position penalty λ·w·p for severity; arrival times are recomputed exactly</td></tr>
+          <tr><th>Not claimed</th><td>Quantum advantage. At 3–4 patients brute force is instant; we show a correct, verified quantum pipeline</td></tr>
+        </table>
+        <h4>References <span class="muted">(ideas only, no code copied)</span></h4>
+        <ul class="refs">
+          <li><a href="https://github.com/AnuragKannojiya/quroute" target="_blank" rel="noopener">QuRoute</a>: multi-stop route QUBO, baselines, map demo</li>
+          <li><a href="https://github.com/shrisha77-boop/Severity-Aware-Emergency-Dispatch-Using-QAOA" target="_blank" rel="noopener">Severity-Aware Emergency Dispatch Using QAOA</a>: severity weights, CVaR</li>
+          <li><a href="https://github.com/gautham-code505/PairCover-Q-" target="_blank" rel="noopener">PairCover-Q / Q-Rescue</a>: transparency, hardware evidence</li>
+          <li>Qiskit and Qiskit Aer (IBM, Apache 2.0)</li>
+        </ul>
+      </div>
+    </aside>
+  </main>
+
+  <div class="toast hidden" id="toast"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
