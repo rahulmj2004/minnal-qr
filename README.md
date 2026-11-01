@@ -186,14 +186,7 @@ docs/                   Concept, quantum explainer and use-case PDFs
 | **Not claimed** | Quantum advantage. At 3–4 patients brute force is instant, and with 6 valid routes, 4,096 samples will almost surely contain the optimum. The meaningful quantum metrics are P(optimal) and valid-sample rate vs random |
 | **Incomplete** | Real-hardware run unless `results/ibm_run.json` is present; multi-ambulance splitting is future work |
 
-## 9. References (patterns only, no code copied)
-
-- QuRoute (QuHack 2026): https://github.com/AnuragKannojiya/quroute (multi-stop route QUBO, baselines, map demo)
-- Severity-Aware Emergency Dispatch Using QAOA (IBM Qiskit Fall Fest 2026): https://github.com/shrisha77-boop/Severity-Aware-Emergency-Dispatch-Using-QAOA (severity weights, QUBO→Ising check, CVaR)
-- PairCover-Q / Q-Rescue (Q-HACK INDIA 2026): https://github.com/gautham-code505/PairCover-Q- (transparency table, hardware evidence)
-- Qiskit and Qiskit Aer (IBM, Apache 2.0)
-
-## 10. Future work
+## 9. Future work
 
 Real OpenStreetMap roads (OSMnx) and live traffic · several ambulances (classical split, then one QAOA per
 ambulance) · flood and landslide scenarios with blocked roads · hospital capacity · constraint-preserving
