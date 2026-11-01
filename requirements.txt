@@ -1,12 +1,7 @@
 qiskit==2.6.1
 qiskit-aer==0.18.2
-qiskit-ibm-runtime==0.51.0
 numpy==2.4.6
 scipy==1.17.1
 networkx==3.6.1
 fastapi==0.162.0
 uvicorn[standard]==0.54.0
-httpx
-matplotlib==3.11.2
-pylatexenc==2.11
-pytest==9.2.0

@@ -1,0 +1,17 @@
+qiskit-env/
+android/
+docs/
+results/
+tests/
+__pycache__/
+.pytest_cache/
+.ipynb_checkpoints/
+.vscode/
+.env
+.DS_Store
+*.ipynb
+run_experiments.py
+run_ibm.py
+save_key.py
+test.py
+web/*.apk

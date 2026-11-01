@@ -7,3 +7,5 @@ __pycache__/
 
 # Android app build output (served locally for phone install)
 web/*.apk
+.vercel
+.env*

@@ -1,0 +1,6 @@
+-r requirements.txt
+qiskit-ibm-runtime==0.51.0
+httpx
+matplotlib==3.11.2
+pylatexenc==2.11
+pytest==9.2.0

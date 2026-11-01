@@ -138,12 +138,32 @@ A single-page web app served by FastAPI (no Streamlit):
 
 Quantum runs execute in a dedicated large-stack thread, one at a time (`minnal_q/runtime.py`), so several browser tabs are safe.
 
+## 6a. SOS phone app
+
+A person holds the SOS button on their phone. Minnal-Q runs QAOA on the server and shows which ambulance is coming,
+when it should arrive and how the qubits reached that choice.
+
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="docs/app/app-home.png" alt="SOS home screen with emergency types, vitals check and hold-to-send SOS button" width="260"></td>
+    <td align="center" width="33%"><img src="docs/app/app-status.png" alt="Dispatch screen showing a 20-minute ambulance arrival and the Q-Fleet assignment" width="260"></td>
+    <td align="center" width="33%"><img src="docs/app/app-lens.png" alt="Qubit Lens screen with the 8-qubit assignment grid and quantum vote" width="260"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Send SOS</b><br>Pick the emergency, check vitals if you can, then hold SOS</td>
+    <td align="center"><b>Q-Fleet dispatch</b><br>Arrival time and the ambulance assigned by QAOA</td>
+    <td align="center"><b>Qubit Lens</b><br>Qubits, measured answers and the brute-force check</td>
+  </tr>
+</table>
+
+*Screens from a simulated run: one SOS from Kaloor added to the three demo patients, using synthetic traffic and the Aer simulator. The app is a prototype and is not connected to real emergency services.*
+
 ## 6b. Setup and run (reproducible)
 
 ```bash
 git clone <this repo> && cd quantum-hackday
 python3.11 -m venv qiskit-env && source qiskit-env/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
 pytest -q                     # 22 tests: QUBO = route cost, ground state = brute force, Ising = QUBO, QAOA > random, API
 python run_experiments.py     # regenerates results/benchmark.csv (≈ 1 min)
