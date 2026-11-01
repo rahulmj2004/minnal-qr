@@ -1,6 +1,6 @@
 /* Minnal-Q SOS service worker: caches the app shell so it opens like an installed app.
    API calls always go to the network (an SOS must never be served from cache). */
-const CACHE = "minnal-sos-v3";
+const CACHE = "minnal-sos-v4";
 const SHELL = ["/sos", "/static/sos.css", "/static/sos.js", "/manifest.webmanifest",
   "/static/icons/icon-192.png", "/static/icons/icon-512.png"];
 
@@ -19,4 +19,14 @@ self.addEventListener("fetch", (e) => {
       const copy = r.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); return r;
     }).catch(() => caches.match(e.request)),
   );
+});
+// Tapping the incoming-call notification opens the app; Answer / Decline are passed to the page.
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((cs) => {
+    const c = cs.find((w) => new URL(w.url).pathname === "/sos");
+    if (!c) return self.clients.openWindow("/sos");
+    if (e.action) c.postMessage({ type: "minnal-call", action: e.action });
+    return c.focus();
+  }));
 });

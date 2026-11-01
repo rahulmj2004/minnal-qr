@@ -104,6 +104,45 @@ function startRing() {
   beep(); st.ring = setInterval(beep, 3000);
 }
 function stopRing() { if (APP) APP.ring(false); clearInterval(st.ring); st.ring = null; buzz(0); }
+
+/* ---------------- system notification for the incoming call ---------------- */
+// Lets the call reach the person if they locked the phone or left the page during dispatch.
+// The Android app has no web notifications inside its WebView, so it keeps its native ringtone instead.
+const CALL_TAG = "minnal-call";
+const canNotify = () => !APP && "Notification" in window && "serviceWorker" in navigator;
+function askNotify() {
+  if (!canNotify() || Notification.permission !== "default") return;
+  try { Notification.requestPermission().catch(() => {}); } catch (_) {}
+}
+async function notifyCall() {
+  if (!canNotify() || Notification.permission !== "granted") return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    if (!st.ring) return;  // already answered or declined
+    await reg.showNotification("Incoming call: Minnal-Q Dispatch", {
+      tag: CALL_TAG, renotify: true, requireInteraction: true,
+      body: `Ambulance dispatched. Estimated arrival ${st.rec.eta} min.`,
+      icon: "/static/icons/icon-192.png", badge: "/static/icons/icon-192.png",
+      vibrate: [800, 400, 800, 400, 800],
+      actions: [{ action: "accept", title: "Answer" }, { action: "decline", title: "Decline" }],
+    });
+  } catch (_) {}
+}
+function clearCallNotice() {
+  if (!canNotify()) return;
+  navigator.serviceWorker.getRegistration()
+    .then((r) => (r ? r.getNotifications({ tag: CALL_TAG }) : []))
+    .then((ns) => ns.forEach((n) => n.close()))
+    .catch(() => {});
+}
+if (canNotify()) {
+  document.addEventListener("click", askNotify, { once: true });
+  navigator.serviceWorker.addEventListener("message", (e) => {  // Answer / Decline tapped on the notification
+    if (!e.data || e.data.type !== CALL_TAG || !$("incoming").classList.contains("active")) return;
+    $(e.data.action === "decline" ? "decline" : "accept").click();
+  });
+}
+
 const speechWaiters = {};
 window.minnalSpeechDone = (id) => { const f = speechWaiters[id]; if (f) { delete speechWaiters[id]; f(); } };
 
@@ -164,6 +203,7 @@ function step(k, cls) { const li = document.querySelector(`#steps li[data-k="${k
 
 async function sendSOS() {
   buzz([100, 60, 100]);
+  askNotify();
   if (!st.pos) gpsFallback("GPS not ready");
   document.querySelectorAll("#steps li").forEach((li) => (li.className = ""));
   show("busy"); step("loc", "run");
@@ -181,17 +221,17 @@ async function sendSOS() {
     st.rec = data;
     step("qaoa", "done"); step("call", "run");
     await sleep(700);
-    st.ended = false; show("incoming"); startRing();
+    st.ended = false; show("incoming"); startRing(); notifyCall();
   } catch (e) {
     show("home"); toast("⚠️ " + e.message + ". Check the server link.", 5000);
   }
 }
 
 /* ---------------- automated call ---------------- */
-$("decline").onclick = () => { stopRing(); renderStatus(); show("status"); toast("Call declined. Your SOS is still active."); };
+$("decline").onclick = () => { clearCallNotice(); stopRing(); renderStatus(); show("status"); toast("Call declined. Your SOS is still active."); };
 $("hangup").onclick = endCall;
 $("accept").onclick = () => {
-  stopRing(); show("incall");
+  clearCallNotice(); stopRing(); show("incall");
   st.callStart = Date.now();
   st.timer = setInterval(() => {
     const s = Math.floor((Date.now() - st.callStart) / 1000);
