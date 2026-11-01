@@ -97,9 +97,10 @@ def solve_qaoa(q: QUBO, reps: int = 1, restarts: int = 3, shots: int = 4096,
     bind = {b: theta[k] for k, b in enumerate(betas)} | {g: theta[reps + k] for k, g in enumerate(gammas)}
     meas = ansatz.assign_parameters(bind)
     meas.measure_all()
-    sim = AerSimulator(seed_simulator=seed)
+    sim = AerSimulator(seed_simulator=seed, max_parallel_threads=1)  # thread-safe inside the web app
     tc = transpile(meas, sim, optimization_level=1, seed_transpiler=seed)
-    counts = SamplerV2(seed=seed).run([tc], shots=shots).result()[0].data.meas.get_counts()
+    sampler = SamplerV2(seed=seed, options={"backend_options": {"max_parallel_threads": 1}})
+    counts = sampler.run([tc], shots=shots).result()[0].data.meas.get_counts()
 
     N, n = q.num_qubits, q.n
     route_counts: dict = {}

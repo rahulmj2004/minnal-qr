@@ -135,10 +135,18 @@ def get_qaoa(slot, hospital, inc_key, lam, reps, objective):
     return q, r1, solve_qaoa(q, reps=2, objective=objective, restarts=3, warm=warm)
 
 
+@st.cache_resource
+def solver_lock():
+    """One quantum simulation at a time, even with several browser tabs open."""
+    import threading
+    return threading.Lock()
+
+
 sc = get_scenario(slot, hospital, inc_key)
 greedy, fastest, exact = greedy_nearest(sc), time_only(sc), brute_force(sc, lam)
 with st.spinner(f"⚡ Training QAOA on {n * n} qubits (AerSimulator)…"):
-    q, res_p1, res = get_qaoa(slot, hospital, inc_key, lam, reps, objective)
+    with solver_lock():
+        q, res_p1, res = get_qaoa(slot, hospital, inc_key, lam, reps, objective)
 quantum = res.best_order
 mq = evaluate(sc, quantum) if quantum else None
 
