@@ -121,7 +121,7 @@ async function notifyCall() {
     if (!st.ring) return;  // already answered or declined
     await reg.showNotification("Incoming call: Minnal-Q Dispatch", {
       tag: CALL_TAG, renotify: true, requireInteraction: true,
-      body: `Ambulance dispatched. Estimated arrival ${st.rec.eta} min.`,
+      body: `Ambulance dispatched. Estimated arrival ${Math.round(st.rec.fleet ? st.rec.fleet.eta : st.rec.eta)} min.`,
       icon: "/static/icons/icon-192.png", badge: "/static/icons/icon-192.png",
       vibrate: [800, 400, 800, 400, 800],
       actions: [{ action: "accept", title: "Answer" }, { action: "decline", title: "Decline" }],
