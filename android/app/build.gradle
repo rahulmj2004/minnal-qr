@@ -1,0 +1,17 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'com.minnalq.sos'
+    compileSdk 35
+    buildToolsVersion '36.0.0'
+    defaultConfig {
+        applicationId 'com.minnalq.sos'
+        minSdk 24
+        targetSdk 35
+        versionCode 2
+        versionName '1.1'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

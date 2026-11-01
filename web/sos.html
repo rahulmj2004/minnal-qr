@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>Minnal-Q SOS</title>
+  <meta name="description" content="Minnal-Q SOS prototype: send your location, get a quantum-optimised ambulance dispatch.">
+  <meta name="theme-color" content="#0B0F1A">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Minnal SOS">
+  <link rel="stylesheet" href="/static/sos.css">
+</head>
+<body>
+  <!-- ============ home ============ -->
+  <section id="home" class="screen active">
+    <header class="top">
+      <div class="brand"><span class="bolt">⚡</span> Minnal-Q <span class="sos-tag">SOS</span></div>
+      <div id="gps" class="gps wait">📍 Getting location…</div>
+    </header>
+
+    <div class="kinds" id="kinds"></div>
+
+    <div class="sos-wrap">
+      <button id="sosBtn" class="sos-btn" aria-label="Hold to send SOS">
+        <svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46"></circle></svg>
+        <span class="sos-text">SOS</span>
+        <span class="sos-sub">Hold 1.5 s</span>
+      </button>
+    </div>
+
+    <p class="fine">Prototype for the QFF26 Kochi hackathon. It is <b>not</b> connected to real emergency
+      services. In a real emergency call <a href="tel:112">112</a>.</p>
+  </section>
+
+  <!-- ============ dispatching ============ -->
+  <section id="busy" class="screen">
+    <div class="pulse-dot"></div>
+    <h2>Dispatching…</h2>
+    <ol class="steps" id="steps">
+      <li data-k="loc">Sending your location</li>
+      <li data-k="snap">Matching to nearest Kochi junction</li>
+      <li data-k="qaoa">Quantum routing (QAOA, AerSimulator)</li>
+      <li data-k="call">Connecting dispatch call</li>
+    </ol>
+  </section>
+
+  <!-- ============ incoming call ============ -->
+  <section id="incoming" class="screen call">
+    <div class="caller">
+      <div class="avatar">⚡</div>
+      <div class="cname">Minnal-Q Dispatch</div>
+      <div class="cstate">Incoming automated call…</div>
+    </div>
+    <div class="call-actions">
+      <button id="decline" class="round red" aria-label="Decline">✕</button>
+      <button id="accept" class="round green" aria-label="Accept">✆</button>
+    </div>
+  </section>
+
+  <!-- ============ in call ============ -->
+  <section id="incall" class="screen call">
+    <div class="caller small">
+      <div class="avatar">⚡</div>
+      <div class="cname">Minnal-Q Dispatch</div>
+      <div class="cstate" id="timer">00:00</div>
+    </div>
+    <div class="caption" id="caption">…</div>
+    <div class="keypad" id="keypad">
+      <button data-k="1">1<small>Yes</small></button>
+      <button data-k="2">2<small>No</small></button>
+      <button data-k="9">9<small>Repeat</small></button>
+    </div>
+    <div class="call-actions one">
+      <button id="hangup" class="round red" aria-label="End call">✕</button>
+    </div>
+  </section>
+
+  <!-- ============ status ============ -->
+  <section id="status" class="screen">
+    <header class="top">
+      <div class="brand"><span class="bolt">⚡</span> Minnal-Q <span class="sos-tag">SOS</span></div>
+      <div class="gps ok" id="sid">SOS #</div>
+    </header>
+    <div class="eta-card">
+      <div class="eta-label">Ambulance arrives in</div>
+      <div class="eta"><span id="eta">–</span><small> min</small></div>
+      <div class="eta-sub" id="etaSub"></div>
+    </div>
+    <div class="grid">
+      <div><span>Location</span><b id="sLoc">–</b></div>
+      <div><span>Severity</span><b id="sSev">–</b></div>
+      <div><span>Your stop</span><b id="sStop">–</b></div>
+      <div><span>Quantum</span><b id="sQ">–</b></div>
+    </div>
+    <div class="route" id="sRoute"></div>
+    <ul class="log" id="sLog"></ul>
+    <div class="row">
+      <button class="ghost" id="replay">✆ Replay call</button>
+      <button class="ghost" id="again">New SOS</button>
+    </div>
+    <p class="fine">Times are simulated from the Minnal-Q Kochi road model. Not a real dispatch.
+      Real emergency: <a href="tel:112">call 112</a>.</p>
+  </section>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/static/sos.js"></script>
+</body>
+</html>

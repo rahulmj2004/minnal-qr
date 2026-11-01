@@ -249,3 +249,18 @@ details label { font-size: 12px; color: var(--muted); font-weight: 600; }
   .brand .tag { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ---------------- live SOS feed ---------------- */
+.sos-feed { position: fixed; left: 16px; bottom: 16px; width: min(360px, calc(100vw - 32px)); z-index: 1200;
+  background: var(--card); border: 2px solid var(--bad); border-radius: var(--radius); box-shadow: 0 12px 32px rgba(214, 40, 40, .25); overflow: hidden; }
+.sos-feed.flash { animation: sosflash 1s 3; }
+@keyframes sosflash { 50% { box-shadow: 0 0 0 10px rgba(214, 40, 40, .35); } }
+.sos-head { display: flex; justify-content: space-between; align-items: center; background: var(--bad); color: #fff; padding: 8px 12px; font-weight: 700; }
+.sos-head .ghost { color: #fff; border-color: rgba(255,255,255,.5); }
+#sosBody { padding: 10px 12px; font-size: 13px; max-height: 40vh; overflow: auto; }
+.sos-item { border-bottom: 1px dashed var(--line); padding: 6px 0; }
+.sos-item:last-child { border-bottom: 0; }
+.sos-item .eta { font-size: 22px; font-weight: 800; color: var(--bad); }
+.sos-item .muted { color: var(--muted); font-size: 12px; }
+.sos-item ul { margin: 4px 0 0; padding-left: 16px; color: var(--muted); font-size: 12px; }
+.phone-pin { font-size: 26px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.4)); }

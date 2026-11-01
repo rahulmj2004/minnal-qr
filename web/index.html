@@ -161,6 +161,12 @@
 
   <div class="toast hidden" id="toast"></div>
 
+  <!-- live SOS feed from phones (/sos) -->
+  <div class="sos-feed hidden" id="sosFeed">
+    <div class="sos-head"><span>🆘 Live SOS from phone</span><button class="ghost small" id="sosReset" title="Clear SOS feed">Clear</button></div>
+    <div id="sosBody"></div>
+  </div>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="/static/app.js"></script>

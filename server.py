@@ -4,8 +4,11 @@ Run:  uvicorn server:app --port 8077      then open http://localhost:8077
 """
 from __future__ import annotations
 
+import threading
+import time
 from functools import lru_cache
 from itertools import permutations
+from math import asin, cos, radians, sin, sqrt
 from pathlib import Path
 
 import numpy as np
@@ -150,9 +153,166 @@ def optimize(body: OptimizeIn):
     return run_big_stack(_optimize, *key)
 
 
+# ---------------------------------------------------------------------------------------------
+# SOS from a phone (prototype). The phone sends GPS + emergency type; the location is snapped to
+# the nearest Kochi junction, the patient joins the live dispatch board, and QAOA re-plans.
+# ---------------------------------------------------------------------------------------------
+EMERGENCY_TYPES = {  # type -> (label, starting severity 1-4)
+    "cardiac": ("Chest pain / cardiac", 4), "breathing": ("Breathing difficulty", 4),
+    "unconscious": ("Unconscious person", 4), "accident": ("Road accident", 3),
+    "injury": ("Fall / injury", 2), "other": ("Other emergency", 2),
+}
+SOS_SLOT, SOS_HOSPITAL, SOS_REPS = "Morning peak (9 AM)", "Lakeshore Hospital", 1  # p=1: ~3 s at 16 qubits
+_sos_lock = threading.Lock()
+_sos: dict = {"version": 0, "records": [], "board": None}
+
+
+def _haversine_km(a, b):
+    la1, lo1, la2, lo2 = map(radians, (a[0], a[1], b[0], b[1]))
+    h = sin((la2 - la1) / 2) ** 2 + cos(la1) * cos(la2) * sin((lo2 - lo1) / 2) ** 2
+    return 6371 * 2 * asin(sqrt(h))
+
+
+def _nearest_junction(lat, lon):
+    best = min((k for k, v in NODES.items() if v[2] == "junction"),
+               key=lambda k: _haversine_km((lat, lon), NODES[k][:2]))
+    return best, round(_haversine_km((lat, lon), NODES[best][:2]), 2)
+
+
+class SOSIn(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    accuracy: float | None = None
+    kind: str = "other"
+    note: str = Field("", max_length=200)
+
+
+class TriageIn(BaseModel):
+    conscious: bool | None = None
+    breathing: bool | None = None
+
+
+def _board_with(location, severity):
+    """Current dispatch board + this patient; at most 4 patients (16 qubits)."""
+    board = _sos["board"] or [dict(location=l, severity=s, source="board") for l, s in DEMO_INCIDENTS[3]]
+    board = [p for p in board if p["location"] != location]
+    board.append(dict(location=location, severity=severity, source="sos"))
+    while len(board) > 4:  # drop the least severe non-SOS patient (handed to another ambulance)
+        drop = min((p for p in board if p["source"] != "sos"), key=lambda p: p["severity"], default=None)
+        if drop is None:
+            drop = min(board[:-1], key=lambda p: p["severity"])
+        board.remove(drop)
+    return board
+
+
+def _dispatch(rec):
+    """Run QAOA for the board containing this SOS and fill the record's ETA fields."""
+    board = _board_with(rec["junction"], rec["severity"])
+    key = (SOS_SLOT, SOS_HOSPITAL, tuple((p["location"], p["severity"]) for p in board), 2.0, SOS_REPS, "cvar")
+    res = run_big_stack(_optimize, *key)
+    idx = [p["location"] for p in board].index(rec["junction"])
+    minnal, greedy = res["routes"]["minnal"] or res["routes"]["optimum"], res["routes"]["greedy"]
+    q = res["quantum"]
+    rec.update(
+        eta=minnal["arrivals"][idx], eta_greedy=greedy["arrivals"][idx],
+        stop=minnal["order"].index(idx) + 1, stops=len(board), route=minnal["label"],
+        qubits=q["qubits"], p_opt=q["p_opt"], random_p_opt=q["random_p_opt"], qaoa_seconds=q["seconds"],
+        optimal=bool(minnal["cost"] == res["routes"]["optimum"]["cost"]),
+        patients=[{"location": p["location"], "severity": p["severity"]} for p in board],
+        result=res, status="dispatched",
+    )
+    _sos["board"] = board
+    return rec
+
+
+def _public(rec):
+    return {k: v for k, v in rec.items() if k != "result"}
+
+
+@app.post("/api/sos")
+def sos(body: SOSIn):
+    if body.kind not in EMERGENCY_TYPES:
+        raise HTTPException(400, f"Unknown emergency type: {body.kind}")
+    label, sev = EMERGENCY_TYPES[body.kind]
+    junction, km = _nearest_junction(body.lat, body.lon)
+    with _sos_lock:
+        rec = dict(id=len(_sos["records"]) + 1, created=time.time(), lat=body.lat, lon=body.lon,
+                   accuracy=body.accuracy, kind=body.kind, kind_label=label, note=body.note,
+                   severity=sev, severity_label=SEVERITY_LABEL[sev], junction=junction, distance_km=km,
+                   outside_area=km > 15, triage={}, log=[f"SOS received: {label} near {junction}"])
+        _dispatch(rec)
+        rec["log"].append(f"QAOA ({rec['qubits']} qubits) dispatched: ETA {rec['eta']} min, stop {rec['stop']}")
+        _sos["records"].append(rec)
+        _sos["active_id"] = rec["id"]
+        _sos["version"] += 1
+        return _public(rec)
+
+
+@app.post("/api/sos/{sid}/triage")
+def sos_triage(sid: int, body: TriageIn):
+    with _sos_lock:
+        rec = next((r for r in _sos["records"] if r["id"] == sid), None)
+        if rec is None:
+            raise HTTPException(404, "Unknown SOS")
+        rec["triage"].update({k: v for k, v in body.model_dump().items() if v is not None})
+        old = rec["severity"]
+        new = old
+        if rec["triage"].get("breathing") is False or rec["triage"].get("conscious") is False:
+            new = 4
+        elif rec["triage"].get("conscious") and rec["triage"].get("breathing") and old == 4 and rec["kind"] in ("accident", "injury", "other"):
+            new = 3
+        rec["previous_eta"] = rec["eta"]
+        if new != old:
+            rec.update(severity=new, severity_label=SEVERITY_LABEL[new])
+            rec["log"].append(f"Triage: severity {SEVERITY_LABEL[old]} -> {SEVERITY_LABEL[new]}, re-running QAOA")
+            _dispatch(rec)
+            rec["log"].append(f"Re-planned: ETA {rec['previous_eta']} -> {rec['eta']} min, stop {rec['stop']}")
+        else:
+            rec["log"].append(f"Triage confirmed severity {SEVERITY_LABEL[new]}; route unchanged")
+        rec["severity_changed"] = new != old
+        _sos["active_id"] = rec["id"]
+        _sos["version"] += 1
+        return _public(rec)
+
+
+@app.get("/api/sos/feed")
+def sos_feed(since: int = 0):
+    with _sos_lock:
+        if since >= _sos["version"]:
+            return {"version": _sos["version"], "changed": False}
+        active = next((r for r in _sos["records"] if r["id"] == _sos.get("active_id")), None)
+        return {"version": _sos["version"], "changed": True,
+                "records": [_public(r) for r in _sos["records"][-10:]],
+                "active": dict(_public(active), result=active["result"]) if active else None}
+
+
+@app.post("/api/sos/reset")
+def sos_reset():
+    with _sos_lock:
+        _sos.update(records=[], board=None, active_id=None)
+        _sos["version"] += 1
+    return {"ok": True}
+
+
 app.mount("/static", StaticFiles(directory=WEB), name="static")
 
 
 @app.get("/")
 def index():
     return FileResponse(WEB / "index.html")
+
+
+@app.get("/sos")
+def sos_page():
+    return FileResponse(WEB / "sos.html")
+
+
+@app.get("/sw.js")
+def service_worker():  # served from the root so it can control /sos
+    return FileResponse(WEB / "sw.js", media_type="application/javascript",
+                        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"})
+
+
+@app.get("/manifest.webmanifest")
+def manifest():
+    return FileResponse(WEB / "manifest.webmanifest", media_type="application/manifest+json")

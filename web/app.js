@@ -406,3 +406,56 @@ function renderEvidence() {
   loadDemo();
   optimize();
 })();
+
+/* ---------------- live SOS from phones (/sos) ---------------- */
+const sosLayer = L.layerGroup().addTo(map);
+let sosVersion = 0, sosBooted = false;
+
+function renderSos(feed) {
+  const box = $("sosFeed"), body = $("sosBody");
+  const recs = (feed.records || []).slice().reverse();
+  box.classList.toggle("hidden", recs.length === 0);
+  body.innerHTML = "";
+  sosLayer.clearLayers();
+  for (const r of recs) {
+    const sev = SEV[r.severity];
+    body.append(el("div", { class: "sos-item" },
+      el("div", {}, el("b", {}, `#${r.id} ${r.kind_label}`), ` · near ${r.junction}`),
+      el("div", {}, el("span", { class: "eta" }, `${Math.round(r.eta)} min`), ` ETA · stop ${r.stop}/${r.stops} · `,
+        el("b", { style: `color:${sev.color}` }, r.severity_label)),
+      el("div", { class: "muted" }, `QAOA ${r.qubits} qubits · nearest-first ETA ${Math.round(r.eta_greedy)} min · GPS ${r.distance_km} km from junction`),
+      el("ul", {}, ...r.log.slice(-3).map((l) => el("li", {}, l)))));
+    L.marker([r.lat, r.lon], { icon: L.divIcon({ className: "", iconSize: [30, 30], iconAnchor: [15, 28], html: '<div class="phone-pin">📱</div>' }) })
+      .bindTooltip(`SOS #${r.id}: ${r.kind_label} (phone GPS)`).addTo(sosLayer);
+    const j = nodeByName(r.junction);
+    if (j) L.polyline([[r.lat, r.lon], [j.lat, j.lon]], { color: "#D62828", dashArray: "4 6", weight: 2 }).addTo(sosLayer);
+  }
+}
+
+async function pollSos() {
+  if (!state.meta) { setTimeout(pollSos, 1000); return; }
+  try {
+    const res = await fetch(`/api/sos/feed?since=${sosVersion}`);
+    const feed = await res.json();
+    if (feed.changed) {
+      const first = !sosBooted; sosVersion = feed.version; sosBooted = true;
+      renderSos(feed);
+      const a = feed.active;
+      if (a && !first) {
+        // show the dispatch board that QAOA solved for this SOS
+        state.slot = a.result.scenario.slot; state.hospital = a.result.scenario.hospital;
+        state.patients = a.patients.map((p) => ({ ...p }));
+        $("hospital").value = state.hospital;
+        seg("slots", state.meta.slots, state.slot, (o) => { state.slot = o; changed(); });
+        state.result = a.result; state.dirty = false;
+        renderPatients(); drawPins(); drawRoutes(); renderResults(); renderQuantum(); renderRoutesTable(); renderEvidence();
+        $("run").textContent = "⚡ Re-optimize with QAOA";
+        $("sosFeed").classList.remove("flash"); void $("sosFeed").offsetWidth; $("sosFeed").classList.add("flash");
+        toast(`🆘 SOS #${a.id}: ${a.kind_label} near ${a.junction}. QAOA dispatch, ETA ${Math.round(a.eta)} min`);
+      }
+    }
+  } catch (_) { /* server restarting; try again */ }
+  setTimeout(pollSos, 2000);
+}
+$("sosReset").addEventListener("click", async () => { await fetch("/api/sos/reset", { method: "POST" }); });
+setTimeout(pollSos, 1500);
