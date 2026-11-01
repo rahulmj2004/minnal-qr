@@ -1,0 +1,6 @@
+qiskit-env/
+__pycache__/
+.ipynb_checkpoints/
+.env
+.DS_Store
+.pytest_cache/
