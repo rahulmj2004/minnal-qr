@@ -185,6 +185,7 @@ class SOSIn(BaseModel):
     accuracy: float | None = None
     kind: str = "other"
     note: str = Field("", max_length=200)
+    severity: int | None = Field(None, ge=1, le=4)  # from the on-phone vitals check (JeevaFlow), if done
 
 
 class TriageIn(BaseModel):
@@ -220,9 +221,24 @@ def _dispatch(rec):
         optimal=bool(minnal["cost"] == res["routes"]["optimum"]["cost"]),
         patients=[{"location": p["location"], "severity": p["severity"]} for p in board],
         result=res, status="dispatched",
+        quantum=_quantum_view(res, board, idx),
     )
     _sos["board"] = board
     return rec
+
+
+def _quantum_view(res, board, you):
+    """What the phone shows of the quantum decision: qubit grid, measured routes, confidence."""
+    q, names = res["quantum"], [p["location"] for p in board]
+    label = lambda order: " → ".join(names[i] for i in order)
+    return {
+        "n": len(board), "names": names, "you": you, "bits": [int(b) for b in q["optimal_bits"]],
+        "shots": q["shots"], "reps": q["reps"], "p_opt": q["p_opt"], "random_p_opt": q["random_p_opt"],
+        "feasible": q["feasible"], "random_feasible": q["random_feasible"],
+        "top": [{"label": label(d["order"]), "shots": d["shots"], "optimal": d["optimal"]}
+                for d in sorted(q["sampled"], key=lambda d: -d["shots"])[:5]],
+        "checks_ok": all(c["ok"] for c in res["checks"]),
+    }
 
 
 def _public(rec):
@@ -234,12 +250,16 @@ def sos(body: SOSIn):
     if body.kind not in EMERGENCY_TYPES:
         raise HTTPException(400, f"Unknown emergency type: {body.kind}")
     label, sev = EMERGENCY_TYPES[body.kind]
+    vitals_sev = body.severity
+    if vitals_sev:
+        sev = max(sev, vitals_sev)
     junction, km = _nearest_junction(body.lat, body.lon)
     with _sos_lock:
         rec = dict(id=len(_sos["records"]) + 1, created=time.time(), lat=body.lat, lon=body.lon,
                    accuracy=body.accuracy, kind=body.kind, kind_label=label, note=body.note,
                    severity=sev, severity_label=SEVERITY_LABEL[sev], junction=junction, distance_km=km,
-                   outside_area=km > 15, triage={}, log=[f"SOS received: {label} near {junction}"])
+                   outside_area=km > 15, triage={}, log=[f"SOS received: {label} near {junction}"]
+                   + ([f"Phone vitals check: severity {SEVERITY_LABEL[vitals_sev]} ({body.note})"] if vitals_sev else []))
         _dispatch(rec)
         rec["log"].append(f"QAOA ({rec['qubits']} qubits) dispatched: ETA {rec['eta']} min, stop {rec['stop']}")
         _sos["records"].append(rec)

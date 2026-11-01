@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="/static/sos.css">
 </head>
 <body>
+  <div class="aurora" aria-hidden="true"></div>
   <!-- ============ home ============ -->
   <section id="home" class="screen active">
     <header class="top">
@@ -23,7 +24,18 @@
       <div id="gps" class="gps wait">📍 Getting location…</div>
     </header>
 
+    <div class="hero">
+      <h1>Help in a <span>flash</span>.</h1>
+      <p>Pick what happened, then hold SOS. Quantum routing sends the ambulance.</p>
+    </div>
+
     <div class="kinds" id="kinds"></div>
+
+    <a class="vitals" id="vitals" href="/static/jeeva/index.html">
+      <span class="vi">🩺</span>
+      <span class="vt"><b id="vitalsHead">Check vitals first</b><small id="vitalsTxt">Heart rate, AFib rhythm and stroke (FAST) check with your phone camera</small></span>
+      <em id="vitalsSev">›</em>
+    </a>
 
     <div class="sos-wrap">
       <button id="sosBtn" class="sos-btn" aria-label="Hold to send SOS">
@@ -33,6 +45,7 @@
       </button>
     </div>
 
+    <div class="badges"><span>⚛ QAOA routing</span><span>📍 Live GPS</span><span>🚦 Kochi traffic</span></div>
     <p class="fine">Prototype for the QFF26 Kochi hackathon. It is <b>not</b> connected to real emergency
       services. In a real emergency call <a href="tel:112">112</a>.</p>
   </section>

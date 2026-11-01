@@ -7,6 +7,20 @@ const KINDS = [
 const DEMO_LOC = { lat: 9.9970, lon: 76.2990, accuracy: 0, demo: true }; // Kaloor, used only if GPS is unavailable
 
 const $ = (id) => document.getElementById(id);
+
+/* ---------------- vitals from JeevaFlow (/static/jeeva) ---------------- */
+const SEV_NAME = { 1: "Minor", 2: "Moderate", 3: "Serious", 4: "Critical" };
+const VITALS = (() => {
+  try { const v = JSON.parse(localStorage.getItem("minnalVitals") || "null"); return v && Date.now() - v.at < 30 * 60e3 ? v : {}; }
+  catch (_) { return {}; }
+})();
+function renderVitals() {
+  if (!VITALS.summary) return;
+  $("vitalsHead").textContent = VITALS.severity ? `Vitals: ${SEV_NAME[VITALS.severity]}` : "Vitals: no danger signs";
+  $("vitalsTxt").textContent = VITALS.summary + (VITALS.severity ? " · sent with your SOS" : "");
+  const e = $("vitalsSev"); e.textContent = VITALS.severity ? SEV_NAME[VITALS.severity] : "OK";
+  $("vitals").classList.add("has", "s" + (VITALS.severity || 0));
+}
 const st = { kind: "cardiac", pos: null, rec: null, callStart: 0, timer: null, ring: null, ended: false, keyWaiter: null };
 
 function show(id) {
@@ -157,7 +171,8 @@ async function sendSOS() {
     const req = fetch("/api/sos", {
       method: "POST", headers: API_HEADERS,
       body: JSON.stringify({ lat: st.pos.lat, lon: st.pos.lon, accuracy: st.pos.accuracy, kind: st.kind,
-                             note: st.pos.demo ? "demo location (GPS unavailable)" : "" }),
+                             severity: VITALS.severity || null,
+                             note: [st.pos.demo ? "demo location (GPS unavailable)" : "", VITALS.summary ? `vitals: ${VITALS.summary}` : ""].filter(Boolean).join("; ").slice(0, 200) }),
     });
     await sleep(500); step("loc", "done"); step("snap", "run");
     await sleep(500); step("snap", "done"); step("qaoa", "run");
@@ -271,3 +286,4 @@ renderKinds();
 startGps();
 if ("speechSynthesis" in window) speechSynthesis.onvoiceschanged = () => pickVoice();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+renderVitals();

@@ -45,3 +45,19 @@ def test_far_away_gps_is_flagged_and_bad_kind_rejected():
 def test_feed_unchanged_when_up_to_date():
     v = client.get("/api/sos/feed").json()["version"]
     assert client.get(f"/api/sos/feed?since={v}").json()["changed"] is False
+
+
+def test_vitals_severity_raises_sos_severity():
+    """A stroke sign found by the on-phone vitals check makes an 'injury' SOS critical."""
+    from fastapi.testclient import TestClient
+    from server import app
+    c = TestClient(app)
+    c.post("/api/sos/reset")
+    r = c.post("/api/sos", json={"lat": 10.0159, "lon": 76.3419, "kind": "injury", "severity": 4,
+                                 "note": "vitals: Stroke signs 1/3"}).json()
+    assert r["severity"] == 4 and r["severity_label"] == "Critical"
+    assert any("vitals" in line for line in r["log"])
+    low = c.post("/api/sos", json={"lat": 10.0159, "lon": 76.3419, "kind": "cardiac", "severity": 1}).json()
+    assert low["severity"] == 4  # vitals never lower the emergency type's severity
+    assert c.post("/api/sos", json={"lat": 10.0, "lon": 76.3, "severity": 9}).status_code == 422
+    c.post("/api/sos/reset")

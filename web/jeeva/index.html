@@ -1,0 +1,1827 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style></head><body>
+<title>JeevaFlow Pulse Check</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+  /* Layout: one narrow instrument column. The trace sits on ECG grid
+     paper; readings use a monospaced readout face. */
+  :root {
+    --paper: #fbfaf8;
+    --surface: #ffffff;
+    --ink: #172426;
+    --muted: #55666a;
+    --line: #dfe5e4;
+    --grid-minor: #f6dcd6;
+    --grid-major: #ebb8ad;
+    --trace: #c2263b;
+    --accent: #0d5c63;
+    --accent-ink: #ffffff;
+    --accent-soft: #e2f0ef;
+    --good: #1d7a46;
+    --warn: #a35b00;
+    --warn-soft: #fbf0e0;
+    --good-soft: #e3f3e9;
+    --bad: #b3261e;
+    --bad-soft: #fbe7e5;
+    --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+    --font-read: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #0f1719; --surface: #152125; --ink: #e7eeed; --muted: #9db0b2; --line: #26363a;
+      --grid-minor: #1d2a2d; --grid-major: #2f4246; --trace: #ff6b7d; --accent: #5cc3c9; --accent-ink: #0c1f22;
+      --accent-soft: #173438; --good: #5fd18f; --warn: #f2b45a; --warn-soft: #2e2617;
+      --good-soft: #15301f; --bad: #ff8a80; --bad-soft: #3a1c1a; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0f1719; --surface: #152125; --ink: #e7eeed; --muted: #9db0b2; --line: #26363a;
+    --grid-minor: #1d2a2d; --grid-major: #2f4246; --trace: #ff6b7d; --accent: #5cc3c9; --accent-ink: #0c1f22;
+    --accent-soft: #173438; --good: #5fd18f; --warn: #f2b45a; --warn-soft: #2e2617;
+      --good-soft: #15301f; --bad: #ff8a80; --bad-soft: #3a1c1a; color-scheme: dark;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.5 var(--font-body);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 20px 40px;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; display: grid; gap: 18px; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .brand { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  h1 { margin: 2px 0 0; font-size: 28px; line-height: 1.15; text-wrap: balance; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
+    font-size: 12px; letter-spacing: .04em; text-transform: uppercase; font-weight: 700;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .chip.warn { background: var(--warn-soft); color: var(--warn); }
+  .chip.good { background: var(--accent-soft); color: var(--good); }
+
+  .instrument { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .strip { position: relative; height: 150px; }
+  .strip canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .strip .scale {
+    position: absolute; right: 10px; bottom: 6px; font: 500 11px var(--font-read); color: var(--muted);
+    background: var(--surface); padding: 0 4px; border-radius: 4px;
+  }
+  .readout { display: grid; grid-template-columns: 1.3fr 1fr; gap: 0; border-top: 1px solid var(--line); }
+  .bpm { padding: 14px 16px; border-right: 1px solid var(--line); min-width: 0; }
+  .label { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .big { font: 600 64px/1 var(--font-read); color: var(--trace); font-variant-numeric: tabular-nums; }
+  .big small { font: 500 16px var(--font-body); color: var(--muted); margin-left: 4px; }
+  .minor { display: grid; align-content: center; gap: 10px; padding: 14px 16px; min-width: 0; }
+  .minor div { display: grid; }
+  .minor b { font: 600 20px var(--font-read); font-variant-numeric: tabular-nums; }
+  .minor b span { font: 400 13px var(--font-body); color: var(--muted); margin-left: 3px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 10px 16px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+
+  .panel { display: grid; gap: 12px; }
+  .status { font-size: 18px; font-weight: 700; text-wrap: balance; min-height: 1.5em; }
+  .progress { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; }
+  .progress i { display: block; height: 100%; width: 0%; background: var(--trace); transition: width .3s linear; }
+
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  button, .filebtn {
+    font: 700 16px var(--font-body); border-radius: 10px; padding: 13px 14px; cursor: pointer;
+    border: 1.5px solid var(--accent); background: var(--surface); color: var(--accent); text-align: center;
+  }
+  button.primary { background: var(--accent); color: var(--accent-ink); }
+  button:disabled { opacity: .5; cursor: default; }
+  button:focus-visible, .filebtn:focus-within { outline: 3px solid var(--trace); outline-offset: 2px; }
+  .filebtn { position: relative; display: block; }
+  .filebtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+  button.quiet { border-color: var(--line); color: var(--ink); }
+
+  .notice { border-radius: 10px; padding: 12px 14px; background: var(--warn-soft); color: var(--ink); font-size: 15px; }
+  .notice b { color: var(--warn); }
+  .verdict { border-radius: 12px; padding: 14px 16px; border-left: 6px solid var(--muted); background: var(--paper); }
+  .verdict strong { display: block; font-size: 22px; line-height: 1.2; }
+  .verdict p { margin: 6px 0 0; font-size: 15px; }
+  .verdict .fine { margin-top: 8px; }
+  .verdict.clear { background: var(--good-soft); border-color: var(--good); }
+  .verdict.clear strong { color: var(--good); }
+  .verdict.unclear { background: var(--warn-soft); border-color: var(--warn); }
+  .verdict.unclear strong { color: var(--warn); }
+  .verdict.flat { background: var(--bad-soft); border-color: var(--bad); }
+  .verdict.flat strong { color: var(--bad); }
+  .chip.bad { background: var(--bad-soft); color: var(--bad); }
+  .tacho { display: block; width: 100%; height: 64px; margin-top: 10px; overflow: visible; }
+  .tacho circle { fill: var(--trace); }
+  .tacho line { stroke: var(--line); stroke-width: 1; }
+  .verdict .conf { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .instrument.example .big, .instrument.example .minor b { opacity: .4; }
+
+  section h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 6px 0 8px; }
+  ol.steps { margin: 0; padding-left: 22px; display: grid; gap: 6px; }
+  .howto { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 0; }
+  .howto figure { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+  .howto figcaption { font-weight: 700; font-size: 15px; margin-bottom: 6px; }
+  .howto svg { display: block; width: 100%; height: auto; }
+  .ill { fill: none; stroke: var(--ink); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+  .ill .paper { fill: var(--paper); }
+  .ill .phone { fill: var(--accent-soft); stroke: var(--accent); }
+  .ill .screen { fill: var(--surface); stroke: var(--accent); stroke-width: 1; }
+  .ill .tape { fill: var(--warn-soft); stroke: var(--warn); stroke-width: 1; }
+  .ill .hole { fill: var(--ink); stroke: none; }
+  .ill .lead { stroke: var(--muted); stroke-width: 1; }
+  .ill .edge { stroke: var(--trace); stroke-width: 2; stroke-dasharray: 5 4; }
+  .ill .arrow { stroke: var(--accent); stroke-width: 2; }
+  .ill text { fill: var(--ink); stroke: none; font: 11px var(--font-body); }
+  .ill text.em { fill: var(--trace); font-weight: 700; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .two > div { min-width: 0; }
+  .fine { font-size: 14px; color: var(--muted); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  td, th { text-align: left; padding: 8px 4px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 400; }
+  td.num { font-family: var(--font-read); font-variant-numeric: tabular-nums; }
+  .histhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .histhead button { padding: 6px 10px; font-size: 14px; }
+  .confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 14px; }
+
+  [hidden] { display: none !important; }
+  a.callbtn { background: var(--bad); border-color: var(--bad); color: var(--paper); font-size: 18px; }
+  .stepper { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+  .stepper li { text-align: center; font-size: 13px; font-weight: 700; padding: 8px 2px; border-radius: 8px; background: var(--line); color: var(--muted); }
+  .stepper li.done { background: var(--good-soft); color: var(--good); }
+  .stepper li.sign { background: var(--bad-soft); color: var(--bad); }
+  .bars { display: grid; gap: 6px; margin-top: 10px; }
+  .bars div { display: grid; grid-template-columns: 74px 1fr 64px; gap: 8px; align-items: center; font-size: 14px; }
+  .bars span.track { height: 12px; background: var(--line); border-radius: 99px; overflow: hidden; }
+  .bars span.track i { display: block; height: 100%; background: var(--good); border-radius: 99px; }
+  .bars span.track i.bad { background: var(--bad); }
+  .bars b { font: 600 14px var(--font-read); text-align: right; }
+  .heard { font-style: italic; }
+  .verdict.overall strong { font-size: 26px; }
+  .tally { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 16px; }
+  .tally li { display: flex; gap: 8px; align-items: baseline; }
+  .tally li b { min-width: 74px; }
+  .mini { font-size: 15px; font-weight: 700; min-height: 1.4em; }
+  .card .actions { margin-top: 4px; }
+  .card .verdict { margin-top: 4px; }
+  .result-line { font: 600 15px var(--font-read); }
+  .say { font-size: 20px; font-weight: 700; padding: 10px 12px; border-radius: 10px; background: var(--paper); border: 1px dashed var(--line); }
+  .facecam canvas.marks { position: absolute; inset: 0; width: 100%; height: 100%; transform: scaleX(-1); }
+  .dim { position: fixed; inset: 0; background: #000; color: #333; display: grid; place-items: center; font-size: 15px; z-index: 50; }
+  .bigprompt { font-size: 26px; font-weight: 700; text-align: center; padding: 18px 10px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); }
+  .stack { display: grid; gap: 18px; }
+  .strip.tall { height: 220px; }
+  .sides { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .sides button[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); }
+  a.filebtn { text-decoration: none; }
+  .spotpick { display: grid; grid-template-columns: minmax(150px, 220px) 1fr; gap: 14px; align-items: center; }
+  @media (max-width: 520px) { .spotpick { grid-template-columns: 1fr; } #hsChest { max-width: 240px; margin: 0 auto; } }
+  #hsChest { width: 100%; height: auto; display: block; }
+  #hsChest .torso { fill: var(--paper); stroke: var(--line); stroke-width: 2; }
+  #hsChest .bone { fill: none; stroke: var(--muted); stroke-width: 2; opacity: .5; }
+  #hsChest rect.bone { fill: var(--line); }
+  #hsChest .rib { fill: none; stroke: var(--line); stroke-width: 1.5; }
+  #hsChest .nipple { fill: none; stroke: var(--muted); opacity: .5; }
+  #hsChest g circle { fill: var(--surface); stroke: var(--accent); stroke-width: 2.5; }
+  #hsChest g text, #hsChest .side { font: 600 10px system-ui, sans-serif; fill: var(--muted); }
+  #hsChest g.on circle { fill: var(--accent); }
+  #hsChest g.on text { fill: var(--accent); }
+  .spots { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .spots button[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); }
+  .spots button.done::after { content: " ✓"; }
+  .bars span.track i.warn { background: var(--warn); }
+  #hsMurmurBar { margin-top: 0; }
+  #hsMurmurBar span.track { display: block; }
+  .tally span.good { color: var(--good); } .tally span.warn { color: var(--warn); } .tally span.bad { color: var(--bad); font-weight: 700; }
+  .samplecard { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); margin-bottom: 10px; }
+  .samplecard .actions { margin-top: 6px; }
+  .meter { display: grid; gap: 4px; }
+  .meter .bar { position: relative; height: 14px; background: var(--line); border-radius: 99px; overflow: hidden; }
+  .meter .bar i { position: absolute; inset: 0 auto 0 0; width: 0%; background: var(--accent); transition: width .08s linear; }
+  .meter .bar b { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--trace); left: 0%; }
+  .meter .fine { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .tabs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; padding: 4px; background: var(--line); border-radius: 12px; }
+  .tabs button { border: 0; background: transparent; color: var(--muted); padding: 10px 8px; font-size: 15px; }
+  .tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
+
+  .facecam { position: relative; width: min(100%, 300px); aspect-ratio: 3 / 4; margin: 0 auto; border-radius: 14px; overflow: hidden; background: #000; }
+  .facecam video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); display: block; }
+  .facecam svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .facecam ellipse { fill: none; stroke: #fff; stroke-width: 1.2; stroke-dasharray: 3 2; }
+  .facecam.locked ellipse { stroke: #5fd18f; stroke-dasharray: none; }
+
+  .research { display: grid; gap: 12px; }
+  .card { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: var(--surface); display: grid; gap: 6px; }
+  .card h3 { margin: 0; font-size: 17px; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .card p { margin: 0; font-size: 15px; }
+  .card .why { color: var(--muted); font-size: 14px; }
+  .card .chip { font-size: 11px; }
+
+  video.hiddenvideo { position: fixed; width: 2px; height: 2px; opacity: 0; pointer-events: none; left: 0; top: 0; }
+
+  @media (max-width: 460px) {
+    .readout { grid-template-columns: 1fr; }
+    .bpm { border-right: 0; border-bottom: 1px solid var(--line); }
+    .minor { grid-template-columns: 1fr 1fr; }
+    .actions, .two { grid-template-columns: 1fr; }
+    .minor { grid-template-columns: 1fr 1fr 1fr; }
+    .big { font-size: 56px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .progress i { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="brand">JeevaFlow Sentinel</div>
+      <h1>Pulse Check</h1>
+    </div>
+    <span class="chip" id="modeChip">Example reading</span>
+  </header>
+
+  <div class="tabs" role="tablist" aria-label="How to measure">
+    <button type="button" role="tab" id="tabFinger" aria-selected="true">Fingertip</button>
+    <button type="button" role="tab" id="tabFace" aria-selected="false">Face</button>
+    <button type="button" role="tab" id="tabEar" aria-selected="false">Ear echo</button>
+    <button type="button" role="tab" id="tabTremor" aria-selected="false">Tremor</button>
+    <button type="button" role="tab" id="tabStroke" aria-selected="false">Stroke check</button>
+    <button type="button" role="tab" id="tabSleep" aria-selected="false">Sleep</button>
+    <button type="button" role="tab" id="tabHeart" aria-selected="false">Heart sounds</button>
+  </div>
+
+  <div class="stack" id="pulseUi">
+  <div class="facecam" id="facecam" hidden>
+    <svg viewBox="0 0 100 133" preserveAspectRatio="none" aria-hidden="true"><ellipse cx="50" cy="60" rx="22" ry="42.5"/></svg>
+  </div>
+
+  <div class="instrument" aria-live="polite">
+    <div class="verdict" id="rhythmBox" hidden><strong id="rhythmHead"></strong><p id="rhythmText"></p>
+      <svg class="tacho" id="rhythmPlot" viewBox="0 0 300 64" preserveAspectRatio="none" role="img" aria-label="Time between beats, one dot per beat"></svg>
+      <p class="fine" id="rhythmPlotNote"></p>
+      <p class="fine">Screening hint from the time between beats, not an ECG. The cut-offs have not yet been checked against ECGs;
+      only an ECG can confirm atrial fibrillation.</p></div>
+    <div class="strip">
+      <canvas id="trace" aria-label="Pulse wave"></canvas>
+      <span class="scale" id="scale">25 mm/s · last 10 s</span>
+    </div>
+    <div class="readout">
+      <div class="bpm">
+        <div class="label">Heart rate</div>
+        <div class="big"><span id="bpm">72</span><small>bpm</small></div>
+      </div>
+      <div class="minor">
+        <div><span class="label">HRV (RMSSD)</span><b id="hrv">35<span>ms</span></b></div>
+        <div><span class="label">Breathing</span><b id="resp">≈14<span>/ min</span></b></div>
+        <div><span class="label">Stress</span><b id="stress">--</b></div>
+      </div>
+    </div>
+    <div class="meta" id="meta">
+      <span>Quality 100%</span><span>72 bpm from 34 beats · 72 bpm from the spectrum</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="status" id="status">Measure your pulse with your phone's camera in 30 seconds.</div>
+    <div class="progress" id="progressWrap" hidden><i id="progress"></i></div>
+    <div class="notice" id="notice" hidden></div>
+    <div class="actions" id="actions">
+      <button class="primary" id="liveBtn" type="button">Measure live</button>
+      <label class="filebtn" id="videoBtn">Analyse a video
+        <input id="videoInput" type="file" accept="video/*" capture="environment" aria-label="Record or choose a 30-second video">
+      </label>
+    </div>
+    <div class="actions" id="runActions" hidden>
+      <button class="quiet" id="cancelBtn" type="button">Cancel</button>
+    </div>
+    <div class="actions" id="resultActions" hidden>
+      <button class="primary" id="saveBtn" type="button">Save reading</button>
+      <button id="againBtn" type="button">Measure again</button>
+    </div>
+  </div>
+
+  <section class="two" id="fingerSteps">
+    <div>
+      <h2>Measure live</h2>
+      <ol class="steps">
+        <li>Sit down and rest for a minute.</li>
+        <li>Cover the rear camera and the flash with your index fingertip. Press lightly.</li>
+        <li>Keep still for 30 seconds.</li>
+      </ol>
+    </div>
+    <div>
+      <h2>Or analyse a video</h2>
+      <ol class="steps">
+        <li>In your camera app, switch the flash to <b>on</b> in video mode.</li>
+        <li>Cover the lens and flash with your fingertip and record 35 seconds.</li>
+        <li>Tap <b>Analyse a video</b> and pick that recording.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="two" id="faceSteps" hidden>
+    <div>
+      <h2>Measure live</h2>
+      <ol class="steps">
+        <li>Face a window or a lamp so your face is evenly lit.</li>
+        <li>Rest the phone on a table or hold it steady at arm's length.</li>
+        <li>Keep your face in the oval and stay still, without talking, for 30 seconds.</li>
+      </ol>
+    </div>
+    <div>
+      <h2>Or analyse a video</h2>
+      <ol class="steps">
+        <li>Record a 35-second selfie video in good light, keeping still.</li>
+        <li>Keep your face in the middle of the frame.</li>
+        <li>Tap <b>Analyse a video</b> and pick that recording.</li>
+      </ol>
+      <p class="fine">Face readings give heart rate only. Beat timing from a face is too blurry for HRV, so stress uses fingertip readings.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Stress score</h2>
+    <p class="fine" style="margin:0">
+      Worked out from heart-rate variability (HRV) in fingertip readings. HRV differs a lot between people, so the page
+      compares each reading with <b>your own usual</b> once you have saved 3 fingertip readings, ideally at the same time
+      of day while resting. Lower HRV than usual suggests more stress or tiredness; it is a wellbeing hint, not a diagnosis.
+    </p>
+  </section>
+
+  <section>
+    <div class="histhead">
+      <h2>Your readings</h2>
+      <button class="quiet" id="clearBtn" type="button" hidden>Delete all</button>
+    </div>
+    <div class="confirm" id="clearConfirm" hidden>
+      Delete every reading saved in this browser?
+      <button class="primary" id="clearYes" type="button">Delete</button>
+      <button class="quiet" id="clearNo" type="button">Keep</button>
+    </div>
+    <table id="history" hidden>
+      <thead><tr><th>When</th><th>How</th><th>Heart rate</th><th>HRV</th><th>Rhythm</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <p class="fine" id="noHistory">No readings yet. Saved readings stay in this browser only.</p>
+  </section>
+
+  </div>
+
+  <div class="stack" id="earUi" hidden>
+    <div class="instrument" aria-live="polite">
+      <div class="verdict" id="earVerdict" hidden><strong id="earVerdictHead"></strong><p id="earVerdictText"></p>
+        <div class="conf" id="earVerdictConf"></div>
+        <p class="fine">Screening hint, not a diagnosis. It is read from the dip depth (clear ≥ 5 dB, flat &lt; 2.5 dB).
+        These cut-offs have not yet been checked against ears examined by a doctor, and the hint is only meaningful with the paper cone.</p></div>
+      <div class="strip tall"><canvas id="echo" aria-label="Echo curve: loudness of the echo across frequencies"></canvas></div>
+      <div class="readout">
+        <div class="bpm">
+          <div class="label">Deepest dip</div>
+          <div class="big"><span id="dipDb">--</span><small>dB</small></div>
+          <div class="fine" id="dipHz">at -- kHz</div>
+        </div>
+        <div class="minor">
+          <div><span class="label">Chirps heard</span><b id="chirps">--</b></div>
+          <div><span class="label">Above room noise</span><b id="snr">--<span>dB</span></b></div>
+        </div>
+      </div>
+      <div class="meta" id="earMeta"><span>No ear check yet</span></div>
+    </div>
+
+    <div class="panel">
+      <div class="sides" role="radiogroup" aria-label="Which ear">
+        <button type="button" role="radio" id="sideLeft" aria-checked="true">Left ear</button>
+        <button type="button" role="radio" id="sideRight" aria-checked="false">Right ear</button>
+      </div>
+      <div class="status" id="earStatus">Check how the eardrum echoes sound, with a paper cone and 5 seconds of chirps.</div>
+      <div class="progress" id="earProgressWrap" hidden><i id="earProgress"></i></div>
+      <div class="meter" id="micMeter" hidden aria-live="off">
+        <div class="bar" role="meter" aria-label="Microphone level" aria-valuemin="-80" aria-valuemax="0" id="micBar"><i id="micNow"></i><b id="micPeak"></b></div>
+        <div class="fine"><span id="micText">Microphone: --</span><span id="micHint"></span></div>
+      </div>
+      <div class="notice" id="earNotice" hidden></div>
+      <div class="actions" id="earActions">
+        <button class="primary" id="earBtn" type="button">Start ear check</button>
+        <a class="filebtn" id="coneLink" download="jeevaflow-ear-cone.svg" href="#">Download paper cone</a>
+      </div>
+      <div class="actions" id="earRunActions" hidden>
+        <button class="quiet" id="earCancel" type="button">Stop</button>
+      </div>
+      <div class="actions" id="earResult" hidden>
+        <button class="primary" id="earSave" type="button">Save check</button>
+        <button id="earAgain" type="button">Check again</button>
+      </div>
+    </div>
+
+    <section aria-labelledby="coneHowHead">
+      <h2 id="coneHowHead">How to put the cone on the phone</h2>
+      <div class="howto">
+        <figure>
+          <figcaption>1 · Cut and roll</figcaption>
+          <svg class="ill" viewBox="0 0 200 220" role="img" aria-label="The printed paper fan is rolled into a cone with a narrow 8 millimetre tip">
+            <path class="paper" d="M 108.66 25 L 169.28 60 A 80 80 0 0 1 30.72 60 L 91.34 25 A 10 10 0 0 0 108.66 25 Z"/>
+            <text x="100" y="72" text-anchor="middle">printed shape</text>
+            <path class="arrow" d="M 100 108 V 128 M 93 121 L 100 128 L 107 121"/>
+            <text x="110" y="122">roll &amp; tape</text>
+            <path class="paper" d="M 66 142 L 97 205 L 103 205 L 134 142"/>
+            <ellipse class="paper" cx="100" cy="142" rx="34" ry="7"/>
+            <text x="140" y="146">wide end</text>
+            <path class="lead" d="M 106 205 L 128 205"/>
+            <text x="131" y="209">8 mm tip</text>
+          </svg>
+        </figure>
+        <figure>
+          <figcaption>2 · Tape it on the bottom edge</figcaption>
+          <svg class="ill" viewBox="0 0 200 220" role="img" aria-label="The wide end of the cone is taped over the bottom edge of the phone, the tip pointing away from the phone">
+            <rect class="phone" x="55" y="8" width="90" height="132" rx="12"/>
+            <rect class="screen" x="62" y="18" width="76" height="108" rx="4"/>
+            <text x="100" y="76" text-anchor="middle">screen</text>
+            <path class="paper" d="M 55 140 L 145 140 L 103 208 L 97 208 Z"/>
+            <rect class="tape" x="44" y="130" width="26" height="18" rx="2" transform="rotate(-18 57 139)"/>
+            <rect class="tape" x="130" y="130" width="26" height="18" rx="2" transform="rotate(18 143 139)"/>
+            <path class="lead" d="M 154 140 L 170 150"/><text x="160" y="162">tape</text>
+            <path class="lead" d="M 104 200 L 124 200"/><text x="127" y="204">tip → ear</text>
+            <path class="lead" d="M 42 132 L 55 140"/><text x="6" y="116">bottom</text><text x="6" y="129">edge</text>
+          </svg>
+        </figure>
+        <figure>
+          <figcaption>Look at the bottom edge</figcaption>
+          <svg class="ill" viewBox="0 0 200 220" role="img" aria-label="Seen from below, the microphone hole and the speaker grille must both be inside the cone's opening">
+            <text x="100" y="22" text-anchor="middle">phone seen from below</text>
+            <rect class="phone" x="20" y="96" width="160" height="22" rx="11"/>
+            <circle class="hole" cx="48" cy="107" r="2.5"/>
+            <rect class="hole" x="88" y="103" width="24" height="8" rx="4"/>
+            <circle class="hole" cx="132" cy="107" r="1.8"/><circle class="hole" cx="139" cy="107" r="1.8"/>
+            <circle class="hole" cx="146" cy="107" r="1.8"/><circle class="hole" cx="153" cy="107" r="1.8"/><circle class="hole" cx="160" cy="107" r="1.8"/>
+            <path class="lead" d="M 48 103 L 40 62"/><text x="16" y="56">microphone</text>
+            <path class="lead" d="M 100 103 L 100 76"/><text x="100" y="70" text-anchor="middle">port</text>
+            <path class="lead" d="M 146 103 L 154 62"/><text x="134" y="56">speaker</text>
+            <ellipse class="edge" cx="100" cy="107" rx="90" ry="26"/>
+            <text class="em" x="100" y="152" text-anchor="middle">cone opening: both holes inside</text>
+            <text x="100" y="172" text-anchor="middle">Seal the gaps with tape.</text>
+            <text x="100" y="188" text-anchor="middle">Your phone may have the holes</text>
+            <text x="100" y="202" text-anchor="middle">the other way round. Cover both.</text>
+          </svg>
+        </figure>
+        <figure>
+          <figcaption>3 · Rest the tip at the ear</figcaption>
+          <svg class="ill" viewBox="0 0 200 220" role="img" aria-label="The phone is held sideways with the cone tip resting at the opening of the ear canal, not pushed in">
+            <rect class="phone" x="4" y="92" width="96" height="46" rx="8"/>
+            <rect class="screen" x="12" y="98" width="80" height="34" rx="3"/>
+            <path class="paper" d="M 100 92 L 100 138 L 158 117 L 158 113 Z"/>
+            <rect class="tape" x="94" y="86" width="12" height="10" rx="2"/>
+            <rect class="tape" x="94" y="134" width="12" height="10" rx="2"/>
+            <path d="M 176 58 C 206 58 214 96 203 120 C 196 136 199 160 180 166 C 170 169 165 160 170 151"/>
+            <path d="M 181 80 C 196 84 198 104 189 114 C 183 120 185 132 178 138"/>
+            <ellipse class="hole" cx="166" cy="115" rx="4" ry="6"/>
+            <path class="lead" d="M 166 124 L 150 176"/>
+            <text class="em" x="80" y="188">rest it here</text>
+            <text class="em" x="80" y="202">never push it in</text>
+            <text x="150" y="44">ear</text>
+          </svg>
+        </figure>
+      </div>
+    </section>
+
+    <section class="two">
+      <div>
+        <h2>Make the cone</h2>
+        <p class="fine" style="margin:0 0 8px"><b>The cone is needed.</b> Without it the chirps spread into the room and the
+          tiny echo from the eardrum is drowned out by the direct sound and by echoes from the face and walls, so the curve
+          comes out flat and would look like fluid.</p>
+        <ol class="steps">
+          <li>Download the cone and print it at 100% size. The scale bar should measure 5 cm.</li>
+          <li>Cut it out and roll it so the narrow end is about 8 mm across. Tape it along the glue tab.</li>
+          <li>Squeeze the wide end flat over the bottom edge of the phone so it covers both the speaker and the microphone, and tape it to the front and back with no gaps.</li>
+        </ol>
+      </div>
+      <div>
+        <h2>Check an ear</h2>
+        <ol class="steps">
+          <li>Find a quiet room. Set the phone volume to about half and disconnect Bluetooth earphones.</li>
+          <li>Rest the narrow end gently at the opening of the ear. <b>Never push it into the ear.</b></li>
+          <li>Tap <b>Start ear check</b> and keep still for 5 seconds of soft chirps. Stop if the child is upset.</li>
+        </ol>
+      </div>
+    </section>
+
+    <section>
+      <h2>What the curve means</h2>
+      <p class="fine" style="margin:0 0 8px">
+        A healthy eardrum vibrates and absorbs part of the sound, which shows as a <b>dip</b> in the curve. Fluid behind
+        the eardrum stiffens it and tends to flatten the dip (University of Washington, Chan et al.,
+        <i>Science Translational Medicine</i>, 2019).
+      </p>
+      <p class="fine" style="margin:0">
+        The coloured result is a <b>provisional</b> reading of the dip: a clear dip shows green, a flat curve red, and one ear
+        much flatter than the other is pointed out. The cut-offs have <b>not</b> yet been calibrated against ears checked by a
+        doctor, so a green result does not rule out an infection. The curve is most useful for comparing the two ears, or the same ear over days, on the same
+        phone. Curves from different phones cannot be compared. Works best in Chrome on Android; on some iPhones the
+        sound may come from the top earpiece while the microphone is on, and the chirps may not be heard.
+      </p>
+    </section>
+
+    <section>
+      <div class="histhead">
+        <h2>Your ear checks</h2>
+        <button class="quiet" id="earClear" type="button" hidden>Delete all</button>
+      </div>
+      <div class="confirm" id="earClearConfirm" hidden>
+        Delete every ear check saved in this browser?
+        <button class="primary" id="earClearYes" type="button">Delete</button>
+        <button class="quiet" id="earClearNo" type="button">Keep</button>
+      </div>
+      <table id="earHistory" hidden>
+        <thead><tr><th>When</th><th>Ear</th><th>Dip at</th><th>Depth</th><th>Result</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="fine" id="earNoHistory">No ear checks yet. Saved checks stay in this browser only.</p>
+    </section>
+
+    <div class="notice">
+      <b>Not a diagnosis.</b> See a doctor if a child has ear pain, fever, fluid coming from the ear, trouble hearing,
+      or seems unwell, whatever this curve shows. Sound is processed on this device and never uploaded or saved.
+    </div>
+  </div>
+
+  <div class="stack" id="tremorUi" hidden>
+    <div class="instrument" aria-live="polite">
+      <div class="verdict" id="trVerdict" hidden><strong id="trHead"></strong><p id="trText"></p>
+        <p class="fine">Measured with the phone's motion sensor. The strength cut-offs are provisional and have not yet been
+        checked against a neurologist's assessment. Not a diagnosis.</p></div>
+      <div class="strip"><canvas id="trTrace" aria-label="Hand shaking"></canvas><span class="scale" id="trScale">shaking · last 5 s</span></div>
+      <div class="readout">
+        <div class="bpm">
+          <div class="label">Shake speed</div>
+          <div class="big"><span id="trHz">--</span><small>per second</small></div>
+        </div>
+        <div class="minor">
+          <div><span class="label">Strength</span><b id="trRms">--<span>m/s²</span></b></div>
+          <div><span class="label">Size</span><b id="trMm">--<span>mm</span></b></div>
+          <div><span class="label">Steady rhythm</span><b id="trRhythm">--</b></div>
+        </div>
+      </div>
+      <div class="meta" id="trMeta"><span>No tremor check yet</span></div>
+    </div>
+    <div class="panel">
+      <div class="sides" role="radiogroup" aria-label="Which hand">
+        <button type="button" role="radio" id="trLeft" aria-checked="false">Left hand</button>
+        <button type="button" role="radio" id="trRight" aria-checked="true">Right hand</button>
+      </div>
+      <div class="sides" role="radiogroup" aria-label="Hand position">
+        <button type="button" role="radio" id="trRest" aria-checked="true">Resting on lap</button>
+        <button type="button" role="radio" id="trOut" aria-checked="false">Arm held out</button>
+      </div>
+      <div class="status" id="trStatus">Hold the phone in one hand for 20 seconds to measure any shaking.</div>
+      <div class="progress" id="trProgressWrap" hidden><i id="trProgress"></i></div>
+      <div class="notice" id="trNotice" hidden></div>
+      <div class="actions">
+        <button class="primary" id="trStart" type="button">Start tremor check</button>
+        <button class="quiet" id="trStop" type="button" hidden>Stop</button>
+        <button id="trSave" type="button" hidden>Save check</button>
+      </div>
+    </div>
+    <section class="two">
+      <div>
+        <h2>How to check</h2>
+        <ol class="steps">
+          <li>Sit down. Hold the phone loosely in one hand, screen up.</li>
+          <li><b>Resting on lap:</b> rest that forearm on your thigh. <b>Arm held out:</b> stretch the arm forward.</li>
+          <li>Tap Start and stay as still as you can for 20 seconds. Do not grip hard.</li>
+          <li>Check both hands, in both positions. Parkinson's tremor is usually strongest at rest; essential tremor when the arm is held out.</li>
+        </ol>
+      </div>
+      <div>
+        <h2>What the numbers mean</h2>
+        <p class="fine" style="margin:0">
+          <b>Shake speed</b> is how many times a second the hand shakes. 4–6 is typical of Parkinson's, 4–12 of essential tremor,
+          and 8–12 of the small normal tremor everyone has. <b>Strength</b> is the shaking acceleration, and <b>size</b> the
+          back-and-forth distance it works out to. <b>Steady rhythm</b> shows how much of the shaking is at one speed: a tremor is
+          rhythmic, a fidgeting hand is not.
+        </p>
+      </div>
+    </section>
+    <section>
+      <div class="histhead"><h2>Your tremor checks</h2><button class="quiet" id="trClear" type="button" hidden>Delete all</button></div>
+      <table id="trHistory" hidden>
+        <thead><tr><th>When</th><th>Hand</th><th>Speed</th><th>Strength</th><th>Result</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="fine" id="trNoHistory">No tremor checks yet. Saved checks stay in this browser only.</p>
+    </section>
+  </div>
+
+  <div class="stack" id="strokeUi" hidden>
+    <div class="verdict flat">
+      <strong>Think stroke? Call 108 now.</strong>
+      <p>Don't wait for this check. A face drooping on one side, a weak arm, or slurred speech that starts suddenly needs a
+      hospital within hours. Note the time the symptoms started.</p>
+      <div class="actions" style="margin-top:10px"><a class="filebtn callbtn" href="tel:108">Call 108</a></div>
+    </div>
+
+    <ol class="stepper" aria-label="Progress">
+      <li id="pgF">1 · Face</li><li id="pgA">2 · Arms</li><li id="pgS">3 · Speech</li><li id="pgR">Result</li>
+    </ol>
+
+    <div class="card">
+      <h3>1 · Face <span class="chip" id="fChip">Not done</span></h3>
+      <p>Hold the phone at arm's length in good light. Relax, then give a big smile when asked. The camera compares how
+      much each side of the mouth lifts.</p>
+      <div class="facecam" id="stCam" hidden><video id="stVideo" playsinline muted></video><canvas class="marks" id="stMarks"></canvas></div>
+      <div class="bigprompt" id="fPrompt" hidden></div>
+      <div class="mini" id="fStatus"></div>
+      <div class="verdict" id="fResult" hidden><strong id="fHead"></strong><p id="fText"></p><div class="bars" id="fBars"></div></div>
+      <div class="actions"><button class="primary" id="fStart" type="button">Start face check</button><button class="quiet" id="fStop" type="button" hidden>Stop</button></div>
+    </div>
+
+    <div class="card">
+      <h3>2 · Arms <span class="chip" id="aChip">Not done</span></h3>
+      <p>Sit up. Hold the phone flat on your palm, screen up, arm straight out in front. When the phone says so, close your
+      eyes and keep still for 10 seconds; it beeps and speaks when to open them. Then do the other arm.</p>
+      <div class="bigprompt" id="aPrompt" hidden></div>
+      <div class="mini" id="aStatus"></div>
+      <div class="verdict" id="aLeftResult" hidden><strong id="aLeftHead"></strong><p id="aLeftText"></p></div>
+      <div class="verdict" id="aRightResult" hidden><strong id="aRightHead"></strong><p id="aRightText"></p></div>
+      <div class="verdict" id="aResult" hidden><strong id="aHead"></strong><p id="aText"></p><div class="bars" id="aBars"></div></div>
+      <div class="actions"><button id="aLeft" type="button">Test left arm</button><button id="aRight" type="button">Test right arm</button></div>
+    </div>
+
+    <div class="card">
+      <h3>3 · Speech <span class="chip" id="sChip">Not done</span></h3>
+      <p>Tap Start, then say this sentence out loud. The phone listens, writes down what it heard, and checks the words and
+      how smoothly they came out.</p>
+      <div class="say">“You can't teach an old dog new tricks.”</div>
+      <div class="meter" id="sMeter" hidden><div class="bar"><i id="sLevel"></i></div><div class="fine"><span id="sMeterText">Listening…</span></div></div>
+      <div class="mini" id="sStatus"></div>
+      <div class="verdict" id="sResult" hidden><strong id="sHead"></strong><p id="sText"></p><p class="heard" id="sHeard"></p></div>
+      <div class="actions">
+        <button class="primary" id="sStart" type="button">Start speech check</button>
+        <button class="quiet" id="sStop" type="button" hidden>Done speaking</button>
+        <button class="quiet" id="sNone" type="button">They could not speak</button>
+      </div>
+      <p class="fine" style="margin:0">The speech model (about 40 MB, downloaded once) runs on this phone. Your voice is never
+      uploaded or saved.</p>
+    </div>
+
+    <div class="verdict overall" id="stOverall">
+      <strong id="stOverallHead">Overall result</strong>
+      <p id="stOverallText">Do all three checks to see the overall result.</p>
+      <ul class="tally" id="stTally"></ul>
+      <div class="actions" id="stOverallActions" hidden><a class="filebtn callbtn" href="tel:108">Call 108</a><button class="quiet" id="stReset" type="button">Start over</button></div>
+    </div>
+
+    <section>
+      <h2>About this check</h2>
+      <p class="fine" style="margin:0">
+        Face, Arms, Speech, Time (FAST) is the stroke warning sign check used by ambulance services: even one sign that
+        starts suddenly is treated as a possible stroke. Here the phone measures the face (MediaPipe face landmarks), the
+        arms (motion sensor) and speech (Whisper speech recognition and timing), all on this phone. The cut-offs are
+        provisional and have not been checked against patients. Only a hospital scan can confirm a stroke, and
+        <b>a result with no signs does not rule one out</b>. Nothing is uploaded or saved.
+      </p>
+    </section>
+  </div>
+
+  <div class="stack" id="sleepUi" hidden>
+    <div class="instrument" aria-live="polite">
+      <div class="verdict" id="slVerdict" hidden><strong id="slHead"></strong><p id="slText"></p>
+        <p class="fine">Counts breathing pauses of 10 seconds or more seen by sonar. This is not a sleep study: it cannot see shallow
+        breathing or oxygen levels, and its cut-offs have not been checked against one.</p></div>
+      <div class="strip tall"><canvas id="slTrace" aria-label="Breathing movement"></canvas><span class="scale">breathing · last 60 s</span></div>
+      <div class="readout">
+        <div class="bpm">
+          <div class="label">Breathing</div>
+          <div class="big"><span id="slRate">--</span><small>/ min</small></div>
+        </div>
+        <div class="minor">
+          <div><span class="label">Pauses</span><b id="slPauses">--</b></div>
+          <div><span class="label">Per hour</span><b id="slPerHour">--</b></div>
+          <div><span class="label">Tracked</span><b id="slTime">--</b></div>
+        </div>
+      </div>
+      <div class="meta" id="slMeta"><span>Not started</span></div>
+    </div>
+    <div class="panel">
+      <div class="bigprompt" id="slPrompt" hidden></div>
+      <div class="status" id="slStatus">Track breathing while you sleep, with sound too high for most adults to hear.</div>
+      <div class="notice" id="slNotice" hidden></div>
+      <div class="actions" id="slActions">
+        <button class="primary" id="slNight" type="button">Start sleep tracking</button>
+        <button id="slDemo" type="button">Try it awake (90 s)</button>
+      </div>
+      <div class="actions" id="slRunActions" hidden>
+        <button class="quiet" id="slStop" type="button">Stop</button>
+        <button class="quiet" id="slDimBtn" type="button">Dim screen</button>
+      </div>
+      <div class="actions" id="slResultActions" hidden>
+        <button class="primary" id="slSave" type="button">Save night</button>
+        <button id="slAgain" type="button">Start again</button>
+      </div>
+    </div>
+    <section class="two">
+      <div>
+        <h2>Set up for the night</h2>
+        <ol class="steps">
+          <li>Plug in the charger. The screen stays on; tap <b>Dim screen</b> to black it out.</li>
+          <li>Take the phone out of its case. Set the volume to about half and disconnect earphones.</li>
+          <li>Put the phone on the bed or a bedside table, within about half a metre of your chest, with the bottom edge (the speaker) pointing at you.</li>
+          <li>Sleep alone in the bed if you can: a partner's breathing mixes in.</li>
+        </ol>
+      </div>
+      <div>
+        <h2>How it works</h2>
+        <p class="fine" style="margin:0">
+          The phone plays steady tones at 18–20 kHz and listens to their echo. Each breath moves the chest a few millimetres, which
+          shifts the echo: that wobble is the breathing line above. A flat stretch of 10 seconds or more counts as a pause. Based on
+          ApneaApp (Nandakumar, Gollakota &amp; Watson, MobiSys 2015). Children and pets may hear a faint hiss; stop if it bothers anyone.
+          Sound is processed on this phone and never recorded or uploaded.
+        </p>
+      </div>
+    </section>
+    <section>
+      <div class="histhead"><h2>Your nights</h2><button class="quiet" id="slClear" type="button" hidden>Delete all</button></div>
+      <table id="slHistory" hidden>
+        <thead><tr><th>Night of</th><th>Tracked</th><th>Breathing</th><th>Pauses / h</th><th>Result</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="fine" id="slNoHistory">No nights saved yet. Saved nights stay in this browser only.</p>
+    </section>
+    <div class="dim" id="slDim" hidden>Tracking breathing · tap to wake</div>
+  </div>
+
+  <div class="stack" id="heartUi" hidden>
+    <div class="verdict" style="border-color:var(--accent)">
+      <strong>Dhadkan · heart murmur check (test version)</strong>
+      <p>Press the phone on the chest and it listens for a <b>heart murmur</b>: a whooshing sound between the heartbeats
+      that can mean a heart valve problem, such as rheumatic heart disease, or a hole in the heart. The check was trained
+      on 942 children's heart recordings labelled by heart doctors. It has <b>not yet been tested with phone microphones</b>,
+      and it is a screen, not a diagnosis.</p>
+    </div>
+    <div class="instrument" aria-live="polite">
+      <div class="verdict" id="hsVerdict" hidden><strong id="hsHead"></strong><p id="hsText"></p></div>
+      <span class="chip warn" id="hsSampleTag" hidden></span>
+      <div class="strip tall"><canvas id="hsTrace" aria-label="Heart sound wave with lub and dub marked"></canvas><span class="scale" id="hsScale">heart sounds · last 4 s</span></div>
+      <div class="readout">
+        <div class="bpm">
+          <div class="label">Heart rate from sound</div>
+          <div class="big"><span id="hsBpm">--</span><small>bpm</small></div>
+        </div>
+        <div class="minor">
+          <div><span class="label">Murmur score</span><b id="hsMurmur">--</b></div>
+          <div class="bars" id="hsMurmurBar" hidden><span class="track"><i></i></span></div>
+          <div><span class="label">Heartbeat clarity</span><b id="hsClarity">--</b></div>
+        </div>
+      </div>
+      <div class="meta" id="hsMeta"><span>Not recorded yet</span></div>
+    </div>
+    <div class="panel">
+      <div class="spotpick">
+        <svg id="hsChest" viewBox="0 0 200 190" role="img" aria-label="Chest with the four listening spots">
+          <path d="M40 30 Q100 8 160 30 L176 180 L24 180 Z" class="torso"/>
+          <path d="M52 34 Q76 44 96 40 M148 34 Q124 44 104 40" class="bone"/>
+          <rect x="94" y="40" width="12" height="100" rx="5" class="bone"/>
+          <path d="M60 70 Q80 76 94 70 M106 70 Q120 76 140 70 M56 100 Q78 106 94 100 M106 100 Q124 106 146 100 M58 128 Q80 134 94 128 M106 128 Q126 136 150 128" class="rib"/>
+          <circle cx="132" cy="134" r="5" class="nipple"/><circle cx="68" cy="134" r="5" class="nipple"/>
+          <g data-spot="AV"><circle cx="84" cy="58" r="9"/><text x="70" y="62" text-anchor="end">Aortic</text></g>
+          <g data-spot="PV"><circle cx="116" cy="58" r="9"/><text x="130" y="62">Pulmonary</text></g>
+          <g data-spot="TV"><circle cx="112" cy="118" r="9"/><text x="78" y="122" text-anchor="end">Tricuspid</text></g>
+          <g data-spot="MV"><circle cx="134" cy="150" r="9"/><text x="148" y="166">Mitral</text></g>
+          <text x="8" y="186" class="side">their right</text><text x="192" y="186" text-anchor="end" class="side">their left</text>
+        </svg>
+        <div>
+          <div class="spots" id="hsSpots" role="radiogroup" aria-label="Chest spot">
+            <button type="button" role="radio" data-spot="AV" aria-checked="false">Aortic</button>
+            <button type="button" role="radio" data-spot="PV" aria-checked="true">Pulmonary</button>
+            <button type="button" role="radio" data-spot="TV" aria-checked="false">Tricuspid</button>
+            <button type="button" role="radio" data-spot="MV" aria-checked="false">Mitral</button>
+          </div>
+          <p class="fine" id="hsSpotWhere"></p>
+          <p class="fine" style="margin:0">These are the four spots a doctor listens at. Murmurs are often loudest at only one of them, so checking all four catches more.</p>
+        </div>
+      </div>
+      <div class="status" id="hsStatus">Pick a spot, press the phone on it, and record 20 seconds of heartbeat.</div>
+      <div class="progress" id="hsProgressWrap" hidden><i id="hsProgress"></i></div>
+      <div class="notice" id="hsNotice" hidden></div>
+      <div class="actions" id="hsActions">
+        <button class="primary" id="hsStart" type="button">Start recording</button>
+      </div>
+      <div class="actions" id="hsRunActions" hidden>
+        <button class="quiet" id="hsStop" type="button">Stop</button>
+      </div>
+      <div class="actions" id="hsResultActions" hidden>
+        <button class="primary" id="hsPlayBoost" type="button">Play heartbeat (speaker)</button>
+        <button id="hsPlayReal" type="button">Play real sound (earphones)</button>
+        <button id="hsNext" type="button">Next spot</button>
+        <a class="filebtn" id="hsDownload" download="dhadkan-heart-sound.wav" href="#">Download recording</a>
+        <button class="quiet" id="hsAgain" type="button">Record again</button>
+      </div>
+      <div class="verdict overall" id="hsOverall" hidden><strong id="hsOverallHead"></strong><p id="hsOverallText"></p></div>
+      <ul class="tally" id="hsSpotList"></ul>
+      <div class="actions"><button class="quiet" id="hsReset" type="button">Clear spot results</button></div>
+    </div>
+    <section class="two">
+      <div>
+        <h2>Hear the difference</h2>
+        <p class="fine" style="margin:0 0 10px">Two real recordings from children in the CirCor heart sound dataset, made with a digital stethoscope. Play them, or run the same check on them.</p>
+        <div class="samplecard">
+          <b>Normal heart</b><span class="fine">clear lub-dub, quiet in between</span>
+          <div class="actions"><button id="hsPlayNormal" type="button">Play</button><button class="quiet" id="hsCheckNormal" type="button">Check this sample</button></div>
+        </div>
+        <div class="samplecard">
+          <b>Heart with a murmur</b><span class="fine">loud (grade III of VI) whoosh between lub and dub</span>
+          <div class="actions"><button id="hsPlayMurmur" type="button">Play</button><button class="quiet" id="hsCheckMurmur" type="button">Check this sample</button></div>
+        </div>
+      </div>
+      <div>
+        <h2>How to record</h2>
+        <ol class="steps">
+          <li>Go to a quiet room. Turn off fans and the TV. Take the phone out of its case.</li>
+          <li>Find the microphone: the small hole on the bottom edge of the phone.</li>
+          <li>Lift the shirt. Press that bottom edge <b>firmly on bare skin</b> at the chosen spot.</li>
+          <li>Tap Start, then <b>stay completely silent and still</b>. The page tells you when it hears the heartbeat.</li>
+        </ol>
+      </div>
+    </section>
+    <section class="two">
+      <div>
+        <h2>How it works</h2>
+        <p class="fine" style="margin:0">
+          Each heartbeat closes the heart's valves twice: "lub" (S1) and "dub" (S2). Pressed on the skin, the microphone
+          records these. The page finds the heart rate, then labels every lub and dub using the heart's timing (lub to dub is
+          always the shorter gap). A healthy heart is quiet between them. With a murmur, blood rushing through a narrow or
+          leaky valve fills that gap with a whoosh. The page measures how loud each gap is, in four pitch bands, compared
+          with the lub and dub and with the pause after the dub, and a model turns that into a murmur score.
+          <b>Play heartbeat (speaker)</b> plays your own recording raised in pitch, because phone speakers cannot play
+          such deep sounds. The recording stays on this phone unless you download it.
+        </p>
+      </div>
+      <div>
+        <h2>How accurate is it?</h2>
+        <p class="fine" style="margin:0">
+          Tested on 2,370 recordings from children it had never seen (5-fold test, split by child), against cardiologists' labels:
+          it caught <b>73% of murmurs</b> (<b>93% of loud ones</b>, 57% of the softest) and correctly cleared <b>95% of normal
+          recordings</b>. Using all four spots, it caught 78% of children with a murmur and cleared 87% without. It finds the
+          lub-dub timing correctly about 8 times in 10. These recordings came from a digital stethoscope; a phone microphone
+          sounds different, so phone accuracy is not known yet. About 1 in 5 recordings was too unclear to judge.
+          Data: Oliveira et al., <a href="https://physionet.org/content/circor-heart-sound/1.0.3/">The CirCor DigiScope Phonocardiogram Dataset</a>, PhysioNet (ODC-By 1.0).
+        </p>
+      </div>
+    </section>
+  </div>
+
+  <section class="research" aria-labelledby="researchHead">
+    <h2 id="researchHead">Research preview: not measured here</h2>
+    <p class="fine" style="margin:0">
+      Researchers have shown phones can screen for these, but each needs a model calibrated against blood tests on real
+      people. This page does not have that calibration, so it shows <b>no number</b> rather than an invented one.
+    </p>
+    <div class="card">
+      <h3>Blood oxygen (SpO₂) <span class="chip warn">Not available</span></h3>
+      <p>University of Washington researchers estimated oxygen from the fingertip camera and flash in a lab study where
+        volunteers' oxygen was lowered on purpose under medical supervision (Hoffman et al., <i>npj Digital Medicine</i>, 2022).</p>
+      <p class="why">Needs: a model trained on paired pulse-oximeter data for each phone type. An uncalibrated "98%" could
+        falsely reassure someone who is unwell. Use a pulse oximeter, and seek care if you are breathless.</p>
+    </div>
+    <div class="card">
+      <h3>Anaemia (low haemoglobin) <span class="chip warn">Not available</span></h3>
+      <p>UW's HemaApp screened haemoglobin from how flash light passes through a fingertip, without a needle
+        (Wang et al., UbiComp 2016).</p>
+      <p class="why">Needs: calibration against blood haemoglobin tests, and in the study extra light sources. A blood test
+        at a health centre is the reliable check.</p>
+    </div>
+    <div class="card">
+      <h3>Newborn jaundice <span class="chip warn">Not available</span></h3>
+      <p>UW's BiliCam photographed a baby's skin next to a printed colour card to estimate bilirubin
+        (de Greef et al., UbiComp 2014).</p>
+      <p class="why">Needs: the printed card and a model trained on newborns' blood bilirubin results. If a baby's skin or
+        eyes look yellow, especially in the first week, see a doctor or health worker the same day.</p>
+    </div>
+  </section>
+
+  <p class="fine">
+    Video is processed on this device and is never uploaded or saved. This is a screening estimate, not a medical
+    device or a diagnosis. If you feel unwell, contact your doctor or emergency services.
+  </p>
+</div>
+
+<video id="cam" class="hiddenvideo" playsinline muted></video>
+<canvas id="grab" width="64" height="48" hidden></canvas>
+<canvas id="grabFace" width="120" height="160" hidden></canvas>
+
+<script src="minnal-bridge.js"></script>
+<script src="ppg.js"></script>
+<script src="ear.js"></script>
+<script src="motion.js"></script>
+<script src="sonar.js"></script>
+<script src="stroke.js"></script>
+<script src="heart.js"></script>
+<script src="features.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const SETTLE_S = 3, RECORD_S = 30, STORE_KEY = 'jf.pulse.readings';
+
+  const els = {
+    trace: $('trace'), bpm: $('bpm'), hrv: $('hrv'), resp: $('resp'), meta: $('meta'), chip: $('modeChip'),
+    status: $('status'), notice: $('notice'), progressWrap: $('progressWrap'), progress: $('progress'),
+    actions: $('actions'), runActions: $('runActions'), resultActions: $('resultActions'), scale: $('scale'),
+    cam: $('cam'), grab: $('grab'), grabFace: $('grabFace'), saveBtn: $('saveBtn'), stress: $('stress'),
+    facecam: $('facecam'), videoInput: $('videoInput'),
+  };
+  const grabCtx = els.grab.getContext('2d', { willReadFrequently: true });
+  const faceCtx = els.grabFace.getContext('2d', { willReadFrequently: true });
+  const FACE_MIN_SKIN = 0.35;
+  let mode = 'finger';     // 'finger' or 'face'
+
+  let run = null;          // the measurement in progress
+  let lastResult = null;   // the latest good result, until saved
+  let wakeLock = null;
+
+  // ---------------------------------------------------------------- drawing
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+  function drawTrace(values, peaks = [], dim = false) {
+    const c = els.trace, dpr = window.devicePixelRatio || 1;
+    const w = c.clientWidth, h = c.clientHeight;
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+      c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+    }
+    const g = c.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.fillStyle = css('--surface'); g.fillRect(0, 0, w, h);
+
+    // ECG paper: 1 mm minor squares, 5 mm major (8 px per mm here).
+    for (const [step, color] of [[8, css('--grid-minor')], [40, css('--grid-major')]]) {
+      g.strokeStyle = color; g.lineWidth = 1; g.beginPath();
+      for (let x = 0.5; x < w; x += step) { g.moveTo(x, 0); g.lineTo(x, h); }
+      for (let y = 0.5; y < h; y += step) { g.moveTo(0, y); g.lineTo(w, y); }
+      g.stroke();
+    }
+    if (!values || values.length < 2) return;
+
+    let lo = Infinity, hi = -Infinity;
+    for (const v of values) { if (v < lo) lo = v; if (v > hi) hi = v; }
+    if (hi - lo < 1e-9) hi = lo + 1;
+    const dx = w / (values.length - 1);
+    const y = (v) => h - 14 - ((v - lo) / (hi - lo)) * (h - 28);
+    g.strokeStyle = dim ? css('--muted') : css('--trace');
+    g.lineWidth = 2; g.lineJoin = 'round'; g.beginPath();
+    values.forEach((v, i) => (i ? g.lineTo(i * dx, y(v)) : g.moveTo(0, y(v))));
+    g.stroke();
+    g.fillStyle = css('--trace');
+    for (const p of peaks) if (p >= 0 && p < values.length) { g.beginPath(); g.arc(p * dx, y(values[p]), 3.5, 0, 7); g.fill(); }
+  }
+
+  function showResult(r, { example = false } = {}) {
+    const start = Math.max(0, r.waveform.length - 300);
+    const wave = r.waveform.slice(start);
+    if (r.verdict !== 'good') {
+      els.bpm.textContent = '--';
+      els.hrv.innerHTML = '--<span>ms</span>';
+      els.resp.innerHTML = '--<span>/ min</span>';
+      els.meta.innerHTML = '<span>No reading this time</span>';
+      els.stress.textContent = '--';
+      drawTrace(wave, [], true);
+      return;
+    }
+    els.bpm.textContent = Math.round(r.heartRate);
+    if (!example && window.minnalReport) window.minnalReport({ hr: Math.round(r.heartRate) });
+    showStress(r, example);
+    els.hrv.innerHTML = r.rmssdMs == null ? '--<span>ms</span>' : `${Math.round(r.rmssdMs)}<span>ms</span>`;
+    els.resp.innerHTML = r.respiratoryRate == null ? '--<span>/ min</span>' : `≈${Math.round(r.respiratoryRate)}<span>/ min</span>`;
+    els.meta.innerHTML = '';
+    for (const text of r.unevenBeats ? [`About ${Math.round(r.heartRate)} bpm on average from ${r.unevenBeats} uneven beats`] : [
+      `Quality ${Math.round(r.quality * 100)}%`,
+      `${Math.round(r.heartRate)} bpm from ${r.beats} beats · ${Math.round(r.spectralHeartRate)} bpm from the spectrum`,
+    ]) { const s = document.createElement('span'); s.textContent = text; els.meta.append(s); }
+    drawTrace(wave, (r.peakIndexes || []).filter((p) => p >= start).map((p) => p - start));
+    els.bpm.closest('.instrument').classList.toggle('example', example);
+    els.chip.textContent = example ? 'Example, not your reading' : 'Your reading';
+    els.chip.className = example ? 'chip warn' : 'chip good';
+  }
+
+  function showStress(r, example) {
+    if (example || r.rmssdMs == null) { els.stress.textContent = '--'; return; }
+    const earlier = loadHistory().filter((h) => h.method === 'camera-ppg-v1' && h.hrv != null).map((h) => h.hrv);
+    const s = Ppg.stressVsUsual(r.rmssdMs, earlier);
+    if (!s) {
+      els.stress.innerHTML = '';
+      const span = document.createElement('span');
+      span.textContent = `${Math.max(0, 3 - earlier.length)} more to learn your usual`;
+      span.style.marginLeft = '0';
+      els.stress.append(span);
+      return;
+    }
+    els.stress.textContent = { higher: 'Higher', usual: 'Usual', lower: 'Lower' }[s.level];
+    const span = document.createElement('span');
+    span.textContent = 'than usual';
+    if (s.level !== 'usual') els.stress.append(span);
+  }
+
+  // ------------------------------------------------------------------ ui
+  const TABS = { finger: 'tabFinger', face: 'tabFace', ear: 'tabEar', tremor: 'tabTremor', stroke: 'tabStroke', sleep: 'tabSleep', heart: 'tabHeart' };
+  function setMode(next) {
+    if (run || earRun || window.Features.busy() || mode === next) return;
+    mode = next;
+    for (const m in TABS) $(TABS[m]).setAttribute('aria-selected', String(mode === m));
+    const pulse = mode === 'finger' || mode === 'face';
+    $('pulseUi').hidden = !pulse;
+    $('earUi').hidden = mode !== 'ear';
+    els.chip.hidden = !pulse;
+    window.Features.show(mode);
+    if (mode === 'ear') { drawEcho(); return; }
+    if (!pulse) return;
+    showRhythm(null);
+    $('fingerSteps').hidden = mode !== 'finger';
+    $('faceSteps').hidden = mode !== 'face';
+    els.videoInput.setAttribute('capture', mode === 'face' ? 'user' : 'environment');
+    notice('');
+    setPhase('idle');
+    status(mode === 'face'
+      ? 'Measure your pulse from your face with the selfie camera in 30 seconds. No touching.'
+      : 'Measure your pulse with your phone\'s camera in 30 seconds.');
+  }
+
+  /** Blank the readout so a run never shows the previous numbers. */
+  const RHYTHM = {
+    regular: { cls: 'good', box: 'clear', short: 'Regular', head: 'Heart rhythm: regular',
+      text: 'The beats came at a steady pace. Small changes that follow your breathing are normal.' },
+    'early-beats': { cls: 'warn', box: 'unclear', short: 'Early beats', head: 'Regular, with a few early beats',
+      text: 'Mostly steady, with one or more beats that came early and a pause after. These are common and usually harmless, but mention them to a doctor if you often feel your heart skip or flutter.' },
+    unclear: { cls: 'warn', box: 'unclear', short: 'Unclear', head: 'Rhythm unclear: measure again',
+      text: 'The time between beats varied more than usual, but not clearly enough to call it irregular. Sit still for 5 minutes and measure again.' },
+    irregular: { cls: 'bad', box: 'flat', short: 'Irregular', head: 'Irregular rhythm: possible atrial fibrillation',
+      text: 'The time between beats kept changing at random, as happens in atrial fibrillation (AFib), a common cause of stroke. Please see a doctor for an ECG soon. Go to hospital now if you also have chest pain, fainting, breathlessness, or weakness on one side.' },
+  };
+
+  /** Rhythm box with a dot per beat: a level line is steady, scattered dots are irregular. */
+  function showRhythm(rr) {
+    const box = $('rhythmBox');
+    box.hidden = !rr;
+    if (!rr) return;
+    const plot = $('rhythmPlot'); plot.innerHTML = '';
+    if (rr.verdict !== 'ok') {
+      box.className = 'verdict';
+      $('rhythmHead').textContent = 'Heart rhythm: could not judge';
+      $('rhythmText').textContent = rr.problem;
+      $('rhythmPlotNote').textContent = '';
+      return;
+    }
+    const info = RHYTHM[rr.rhythm];
+    if (window.minnalReport) window.minnalReport({ rhythm: rr.rhythm });
+    box.className = `verdict ${info.box}`;
+    $('rhythmHead').textContent = info.head;
+    $('rhythmText').textContent = info.text;
+    const iv = rr.intervals, mean = iv.reduce((a, b) => a + b, 0) / iv.length;
+    const lo = Math.min(mean * 0.6, ...iv), hi = Math.max(mean * 1.4, ...iv);
+    const NS = 'http://www.w3.org/2000/svg', el = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); plot.append(e); };
+    const y = (ms) => 60 - (ms - lo) / (hi - lo) * 56;
+    el('line', { x1: 0, x2: 300, y1: y(mean), y2: y(mean) });
+    iv.forEach((ms, i) => el('circle', { cx: 6 + i * 288 / Math.max(1, iv.length - 1), cy: y(ms), r: 3.2 }));
+    $('rhythmPlotNote').textContent = `Time between beats, one dot per beat: ${Math.round(Math.min(...iv))}–${Math.round(Math.max(...iv))} ms. Steady beats sit on the line.`;
+  }
+
+  function clearReadout() {
+    showRhythm(null);
+    els.bpm.textContent = '--';
+    els.hrv.innerHTML = '--<span>ms</span>';
+    els.resp.innerHTML = '--<span>/ min</span>';
+    els.stress.textContent = '--';
+    els.meta.innerHTML = '<span>Measuring…</span>';
+    lastShown = null;
+  }
+
+  function setPhase(phase) {
+    const running = phase === 'running';
+    els.actions.hidden = running || phase === 'result';
+    els.runActions.hidden = !running;
+    els.resultActions.hidden = phase !== 'result';
+    els.progressWrap.hidden = !running;
+  }
+  function status(text) { els.status.textContent = text; }
+  function notice(text) {
+    els.notice.hidden = !text;
+    els.notice.innerHTML = '';
+    if (text) { const b = document.createElement('b'); b.textContent = 'Note: '; els.notice.append(b, text); }
+  }
+  function progress(fraction) { els.progress.style.width = `${Math.max(0, Math.min(1, fraction)) * 100}%`; }
+
+  async function keepAwake(on) {
+    try {
+      if (on && 'wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+      else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+    } catch { /* optional */ }
+  }
+
+  // -------------------------------------------------------------- sampling
+  function sampleFrame(video) {
+    const w = els.grab.width, h = els.grab.height;
+    grabCtx.drawImage(video, 0, 0, w, h);
+    const { data } = grabCtx.getImageData(0, 0, w, h);
+    return Ppg.averageRgba(data, w, h, 1);
+  }
+
+  /** Face colour inside the oval, cropping the frame to 3:4 like the preview. */
+  function sampleFace(video) {
+    const w = els.grabFace.width, h = els.grabFace.height;
+    const vw = video.videoWidth || w, vh = video.videoHeight || h;
+    const scale = Math.min(vw / w, vh / h);
+    const sw = w * scale, sh = h * scale;
+    faceCtx.drawImage(video, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 0, 0, w, h);
+    const { data } = faceCtx.getImageData(0, 0, w, h);
+    return Ppg.averageFace(data, w, h);
+  }
+
+  /** One sample for the current mode, and whether the subject is in place. */
+  function takeSample(video, t) {
+    if (mode === 'face') {
+      const f = sampleFace(video);
+      return { sample: { t, ...f }, inPlace: f.skin >= FACE_MIN_SKIN, signal: f.g };
+    }
+    const { red, green } = sampleFrame(video);
+    return { sample: { t, red, green }, inPlace: Ppg.fingerCovers(red, green), signal: red };
+  }
+
+  function eachFrame(video, fn) {
+    let stopped = false;
+    if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+      const tick = (now, meta) => { if (stopped) return; fn(meta.mediaTime * 1000, now); video.requestVideoFrameCallback(tick); };
+      video.requestVideoFrameCallback(tick);
+    } else {
+      const tick = (now) => { if (stopped) return; fn(video.currentTime * 1000, now); requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+    }
+    return () => { stopped = true; };
+  }
+
+  // ------------------------------------------------------------ live mode
+  async function startLive() {
+    notice('');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      notice('This page cannot open the camera here. Use "Analyse a video" instead, or open the page in Chrome or Safari over https.');
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: mode === 'face'
+          ? { facingMode: { ideal: 'user' }, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } }
+          : { facingMode: { ideal: 'environment' }, width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 30 } },
+      });
+    } catch (e) {
+      notice(e && e.name === 'NotAllowedError'
+        ? 'Camera access was refused. Allow the camera for this page in your browser settings, or use "Analyse a video".'
+        : 'The camera could not be opened here. Use "Analyse a video" instead.');
+      return;
+    }
+
+    const track = stream.getVideoTracks()[0];
+    let torch = false;
+    if (mode === 'finger') {
+      try { await track.applyConstraints({ advanced: [{ torch: true }] }); torch = !!(track.getSettings && track.getSettings().torch); } catch { /* no torch */ }
+    } else {
+      els.facecam.prepend(els.cam);
+      els.cam.className = '';
+      els.facecam.hidden = false;
+    }
+    els.cam.srcObject = stream;
+    try { await els.cam.play(); } catch { /* muted inline video plays */ }
+
+    run = { mode: 'live', stream, samples: [], live: [], filter: Ppg.liveBandpass(), base: null, phase: 'settle', start: null, restarts: 0 };
+    setPhase('running');
+    clearReadout();
+    keepAwake(true);
+    els.chip.textContent = 'Measuring'; els.chip.className = 'chip warn';
+    if (mode === 'finger' && !torch) notice('The flash did not turn on from the browser. Measure next to a bright lamp, or use "Analyse a video" with your camera app\'s flash.');
+
+    run.stopFrames = eachFrame(els.cam, (_, now) => onLiveFrame(now));
+  }
+
+  function onLiveFrame(now) {
+    if (!run || run.mode !== 'live') return;
+    const { sample, inPlace, signal } = takeSample(els.cam, now);
+    const face = mode === 'face';
+    els.facecam.classList.toggle('locked', face && inPlace);
+    if (run.start == null) run.start = now;
+    const elapsed = (now - run.start) / 1000;
+
+    if (run.phase === 'settle') {
+      if (!inPlace) {
+        run.start = now; progress(0);
+        status(face ? 'Fit your face inside the oval, in good light.' : 'Cover the rear camera and the flash with your fingertip.');
+        return;
+      }
+      status(face ? 'Face found. Keep still…' : 'Finger detected. Keep still…');
+      if (elapsed >= SETTLE_S) Object.assign(run, { phase: 'record', start: now, samples: [], live: [], filter: Ppg.liveBandpass(), base: null });
+      return;
+    }
+
+    if (!inPlace) {
+      run.restarts++;
+      Object.assign(run, { phase: 'settle', start: now });
+      notice(face
+        ? 'Your face left the oval, so the timer restarted. Keep still with your face in the oval.'
+        : 'Your finger moved off the camera, so the timer restarted. Keep it resting gently in place.');
+      return;
+    }
+    run.samples.push(sample);
+    if (run.base == null) run.base = signal;
+    run.live.push(run.filter(signal - run.base));
+    if (run.live.length > 150) run.live.shift();
+    drawTrace(run.live);
+    els.scale.textContent = 'live · last 5 s';
+    status(`Measuring. ${Math.max(0, Math.ceil(RECORD_S - elapsed))} s left. Keep still${face ? ' and don\'t talk' : ' and breathe normally'}.`);
+    progress(elapsed / RECORD_S);
+    if (elapsed >= RECORD_S) finish();
+  }
+
+  // ----------------------------------------------------------- video mode
+  function analyseVideo(file) {
+    notice('');
+    const url = URL.createObjectURL(file);
+    const video = els.cam;
+    video.srcObject = null;
+    video.src = url;
+    video.muted = true;
+    run = { mode: 'video', url, samples: [], live: [], filter: Ppg.liveBandpass(), base: null };
+    setPhase('running');
+    clearReadout();
+    keepAwake(true);
+    els.chip.textContent = 'Analysing video'; els.chip.className = 'chip warn';
+    status('Reading the video…');
+
+    video.onloadedmetadata = async () => {
+      const usable = video.duration - 3;
+      if (!isFinite(video.duration) || usable < 17) {
+        stop();
+        notice('The video is too short. Record at least 20 seconds, ideally 35.');
+        status('Measure your pulse with your phone\'s camera in 30 seconds.');
+        return;
+      }
+      const from = 2, to = Math.min(video.duration - 1, from + 32);
+      run.stopFrames = eachFrame(video, (tMs) => {
+        if (!run || run.mode !== 'video') return;
+        const t = tMs / 1000;
+        if (t >= from && t <= to) {
+          const { sample, signal } = takeSample(video, tMs);
+          run.samples.push(sample);
+          if (run.base == null) run.base = signal;
+          run.live.push(run.filter(signal - run.base));
+          if (run.live.length > 150) run.live.shift();
+          drawTrace(run.live);
+        }
+        progress((t - from) / (to - from));
+        status(`Analysing the video… ${Math.round(Math.max(0, Math.min(1, (t - from) / (to - from))) * 100)}%`);
+        if (t >= to) { video.pause(); finish(); }
+      });
+      video.onended = () => run && run.mode === 'video' && finish();
+      try {
+        video.currentTime = 0;
+        await video.play();
+      } catch {
+        stop();
+        notice('This browser could not play the video. Try recording again, or use "Measure live".');
+      }
+    };
+    video.onerror = () => { stop(); notice('This video format could not be read. Record a new video with your camera app and try again.'); };
+  }
+
+  // ------------------------------------------------------------- finishing
+  function stop() {
+    if (!run) return;
+    if (run.stopFrames) run.stopFrames();
+    if (run.stream) run.stream.getTracks().forEach((t) => t.stop());
+    if (run.url) URL.revokeObjectURL(run.url);
+    els.cam.pause();
+    els.cam.removeAttribute('src');
+    els.cam.srcObject = null;
+    if (!els.facecam.hidden) {
+      els.facecam.hidden = true;
+      els.facecam.classList.remove('locked');
+      els.cam.className = 'hiddenvideo';
+      document.body.append(els.cam);
+    }
+    run = null;
+    keepAwake(false);
+    setPhase('idle');
+    els.scale.textContent = '25 mm/s · last 10 s';
+  }
+
+  function finish() {
+    if (!run) return;
+    const samples = run.samples;
+    const method = mode === 'face' ? 'face-rppg-v1' : 'camera-ppg-v1';
+    stop();
+    status('Working out your pulse…');
+    setTimeout(() => {
+      const r = method === 'face-rppg-v1' ? Ppg.analyzeFace(samples) : Ppg.analyze(samples);
+      r.method = method;
+      // Rhythm needs the cleaner fingertip signal; the face is too noisy for beat-to-beat timing.
+      const rr = method === 'camera-ppg-v1' ? Ppg.rhythm(samples) : null;
+      showResult(r);
+      showRhythm(rr);
+      if (rr && rr.verdict === 'ok') r.rhythm = rr.rhythm;
+      if (r.verdict !== 'good' && rr && rr.verdict === 'ok' && rr.rhythm === 'irregular') {
+        // The heart-rate check rejects uneven beats as noise, but the rhythm
+        // check found clean pulses at uneven times: report that instead.
+        Object.assign(r, { verdict: 'good', heartRate: rr.heartRate, rmssdMs: null, respiratoryRate: null,
+          quality: rr.beatQuality, unevenBeats: rr.intervals.length + 1 });
+        showResult(r);
+      }
+      if (r.verdict === 'good') {
+        lastResult = r;
+        setPhase('result');
+        els.saveBtn.disabled = false;
+        els.saveBtn.textContent = 'Save reading';
+        status(r.rhythm === 'irregular'
+          ? `Your pulse is irregular, about ${Math.round(r.heartRate)} beats per minute on average.`
+          : `Your heart rate is about ${Math.round(r.heartRate)} beats per minute.`);
+      } else {
+        lastResult = null;
+        setPhase('idle');
+        els.chip.textContent = 'No reading'; els.chip.className = 'chip warn';
+        status('No reading this time.');
+        notice(`${r.problem} ${method === 'face-rppg-v1'
+          ? 'Tips: face a window or lamp, rest the phone on something, and keep still without talking.'
+          : 'Tips: warm your hands, rest your hand on a table, and cover both the lens and the flash.'}`);
+      }
+    }, 30);
+  }
+
+  // --------------------------------------------------------------- history
+  function loadHistory() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); } catch { return []; }
+  }
+  function saveHistory(list) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(list)); return true; } catch { return false; }
+  }
+  function renderHistory() {
+    const list = loadHistory();
+    const table = $('history'), body = table.querySelector('tbody');
+    body.innerHTML = '';
+    for (const r of list.slice(0, 20)) {
+      const tr = document.createElement('tr');
+      const when = new Date(r.at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+      const how = r.method === 'face-rppg-v1' ? 'Face' : 'Finger';
+      for (const [text, num] of [[when, false], [how, false], [`${r.bpm} bpm`, true], [r.hrv == null ? '--' : `${r.hrv} ms`, true]]) {
+        const td = document.createElement('td'); td.textContent = text; if (num) td.className = 'num'; tr.append(td);
+      }
+      const td = document.createElement('td');
+      if (r.rhythm && RHYTHM[r.rhythm]) {
+        const chip = document.createElement('span');
+        chip.className = `chip ${RHYTHM[r.rhythm].cls}`; chip.textContent = RHYTHM[r.rhythm].short; td.append(chip);
+      } else td.textContent = '--';
+      tr.append(td);
+      body.append(tr);
+    }
+    table.hidden = !list.length;
+    $('noHistory').hidden = !!list.length;
+    $('clearBtn').hidden = !list.length;
+  }
+
+  // --------------------------------------------------------------- ear echo
+  const EAR_KEY = 'jf.ear.readings';
+  let earRun = null, earSide = 'left', earLast = null;
+
+  function earStatus(text) { $('earStatus').textContent = text; }
+  function earNotice(text) {
+    const n = $('earNotice');
+    n.hidden = !text; n.innerHTML = '';
+    if (text) { const b = document.createElement('b'); b.textContent = 'Note: '; n.append(b, text); }
+  }
+  function earPhase(phase) {
+    $('earActions').hidden = phase !== 'idle';
+    $('earResult').hidden = phase !== 'result';
+    $('earProgressWrap').hidden = phase !== 'running';
+    $('earRunActions').hidden = phase !== 'running';
+    $('micMeter').hidden = phase !== 'running';
+    $('sideLeft').disabled = $('sideRight').disabled = phase === 'running';
+  }
+  function setSide(side) {
+    earSide = side;
+    $('sideLeft').setAttribute('aria-checked', String(side === 'left'));
+    $('sideRight').setAttribute('aria-checked', String(side === 'right'));
+  }
+
+  function loadEar() { try { return JSON.parse(localStorage.getItem(EAR_KEY) || '[]'); } catch { return []; } }
+  function saveEar(list) { try { localStorage.setItem(EAR_KEY, JSON.stringify(list)); return true; } catch { return false; } }
+
+  /** Echo curves: this check, plus the latest saved check of each ear. */
+  function drawEcho() {
+    const c = $('echo'), dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+    if (!w || !h) return;
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+    const g = c.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.fillStyle = css('--surface'); g.fillRect(0, 0, w, h);
+
+    const saved = loadEar();
+    const curves = [];
+    if (earLast) curves.push({ label: `This check (${earLast.side})`, db: earLast.db, freqs: earLast.freqs, color: css('--trace'), width: 2.5, dip: earLast.dip });
+    for (const side of ['left', 'right']) {
+      const s = saved.find((r) => r.ear === side);
+      if (s) curves.push({ label: `Saved ${side}`, db: s.curve, freqs: s.curve.map((_, i) => s.f0 + i * s.step), color: side === 'left' ? css('--accent') : css('--muted'), width: 1.5, dash: side === 'right' ? [5, 4] : [] });
+    }
+
+    const L = 36, R = 10, T = 26, B = 22, x0 = Ear.BAND[0], x1 = Ear.BAND[1];
+    const all = curves.flatMap((k) => k.db);
+    let lo = Math.min(-6, ...all), hi = Math.max(6, ...all);
+    lo = Math.floor(lo / 3) * 3; hi = Math.ceil(hi / 3) * 3;
+    const X = (f) => L + (f - x0) / (x1 - x0) * (w - L - R);
+    const Y = (d) => T + (hi - d) / (hi - lo) * (h - T - B);
+
+    g.font = `500 11px ${css('--font-read')}`; g.fillStyle = css('--muted'); g.strokeStyle = css('--line'); g.lineWidth = 1;
+    g.textAlign = 'right'; g.textBaseline = 'middle';
+    for (let d = lo; d <= hi; d += 3) {
+      g.beginPath(); g.moveTo(L, Math.round(Y(d)) + 0.5); g.lineTo(w - R, Math.round(Y(d)) + 0.5); g.stroke();
+      if ((d - lo) % 6 === 0) g.fillText(`${d > 0 ? '+' : ''}${d}`, L - 6, Y(d));
+    }
+    g.textAlign = 'center'; g.textBaseline = 'top';
+    for (const f of [2000, 2500, 3000, 3500, 4000]) g.fillText(`${f / 1000} kHz`, X(f), h - B + 6);
+
+    if (!curves.length) {
+      g.textBaseline = 'middle'; g.font = `400 14px ${css('--font-body')}`;
+      g.fillText('The echo curve will appear here', (L + w - R) / 2, (T + h - B) / 2);
+      return;
+    }
+    for (const k of curves) {
+      g.strokeStyle = k.color; g.lineWidth = k.width; g.setLineDash(k.dash || []); g.lineJoin = 'round';
+      g.beginPath();
+      k.db.forEach((d, i) => (i ? g.lineTo(X(k.freqs[i]), Y(d)) : g.moveTo(X(k.freqs[i]), Y(d))));
+      g.stroke();
+    }
+    g.setLineDash([]);
+    const first = curves[0];
+    if (first.dip && first.dip.depthDb >= 1) {
+      const i = first.freqs.indexOf(first.dip.hz);
+      g.fillStyle = first.color; g.beginPath(); g.arc(X(first.dip.hz), Y(first.db[i]), 4, 0, 7); g.fill();
+    }
+    // Legend
+    g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = `400 12px ${css('--font-body')}`;
+    let lx = L;
+    for (const k of curves) {
+      g.strokeStyle = k.color; g.lineWidth = k.width; g.setLineDash(k.dash || []);
+      g.beginPath(); g.moveTo(lx, 12); g.lineTo(lx + 16, 12); g.stroke(); g.setLineDash([]);
+      g.fillStyle = css('--ink'); g.fillText(k.label, lx + 20, 12);
+      lx += 28 + g.measureText(k.label).width;
+    }
+  }
+
+  const HINT = {
+    clear: { short: 'Normal', head: 'Looks normal', text: 'The eardrum absorbed sound and left a clear dip, as a healthy eardrum moving freely does.' },
+    unclear: { short: 'Unclear', head: 'Unclear: check again', text: 'The dip is shallow. Check again with the cone resting steadily at the ear opening; if it stays shallow, compare with the other ear.' },
+    flat: { short: 'Flat', head: 'Flat echo: possible fluid', text: 'The curve has almost no dip, as happens when fluid behind the eardrum stops it moving. Please have the ear checked by a doctor, especially if there is pain or fever.' },
+  };
+
+  /** Coloured result for this check, compared with the latest saved check of the other ear. */
+  function showVerdict(r) {
+    const box = $('earVerdict');
+    box.hidden = r.verdict !== 'ok';
+    if (box.hidden) return;
+    const other = loadEar().find((c) => c.ear !== r.side);
+    const hint = Ear.earHint(r.dip.depthDb, other ? other.depthDb : null);
+    box.className = `verdict ${hint.level}`;
+    $('earVerdictHead').textContent = `${r.side === 'left' ? 'Left' : 'Right'} ear · ${HINT[hint.level].head}`;
+    let text = HINT[hint.level].text;
+    if (hint.flatterThanOther) {
+      text += ` This ear's dip is ${hint.gapDb.toFixed(1)} dB shallower than the ${other.ear} ear's last check, which is worth showing a doctor.`;
+      if (hint.level === 'clear') { box.className = 'verdict unclear'; $('earVerdictHead').textContent += ', but flatter than the other ear'; }
+    }
+    $('earVerdictText').textContent = text;
+
+    // How much to trust it: the measurement quality, and whether a repeat check agrees.
+    const conf = $('earVerdictConf'); conf.innerHTML = '';
+    const chip = (cls, t) => { const c = document.createElement('span'); c.className = `chip ${cls}`; c.textContent = t; conf.append(c); };
+    const quality = Ear.reliability(r);
+    chip(quality === 'high' ? 'good' : 'warn', quality === 'high' ? 'Measurement quality: high' : 'Measurement quality: fair');
+    const same = loadEar().filter((c) => c.ear === r.side)
+      .map((c) => ({ at: Date.parse(c.at), level: Ear.earHint(c.depthDb).level }));
+    const agree = Ear.agreement(hint.level, same, Date.now());
+    if (agree === 'confirmed') chip('good', 'Confirmed: 2 checks agree');
+    else if (agree === 'disagree') chip('warn', 'Checks disagree: do one more');
+    else chip('', 'Save, then check again to confirm');
+  }
+
+  function showEcho(r) {
+    showVerdict(r);
+    $('chirps').textContent = `${r.chirpsHeard}/${r.expected}`;
+    $('snr').innerHTML = r.snrDb == null ? '--<span>dB</span>' : `${Math.round(r.snrDb)}<span>dB</span>`;
+    const meta = $('earMeta'); meta.innerHTML = '';
+    const add = (text) => { const s = document.createElement('span'); s.textContent = text; meta.append(s); };
+    if (r.verdict !== 'ok') {
+      $('dipDb').textContent = '--'; $('dipHz').textContent = 'at -- kHz';
+      add('No echo curve this time');
+    } else {
+      $('dipDb').textContent = r.dip.depthDb.toFixed(1);
+      $('dipHz').textContent = r.dip.depthDb >= 1 ? `at ${(r.dip.hz / 1000).toFixed(2)} kHz` : 'no clear dip';
+      add(`${r.side === 'left' ? 'Left' : 'Right'} ear`);
+      add(`Chirps agreed within ${r.consistencyDb.toFixed(1)} dB`);
+    }
+    // What the microphone heard, so a failed check can be understood.
+    if (r.peakDb != null) add(`Loudest sound ${Math.round(r.peakDb)} dB · room ${Math.round(r.roomDb)} dB`);
+    if (r.via) add(r.attempts > 1 ? `Took ${r.attempts} tries (${r.via === 'element' ? 'media player' : 'louder'})` : 'First try');
+  }
+
+  // Microphone level in dB below full scale, mapped onto the meter bar.
+  const levelPct = (db) => Math.max(0, Math.min(100, (db + 80) / 80 * 100));
+  const dbOf = (v) => 20 * Math.log10(Math.max(v, 1e-6));
+
+  /**
+   * Ways to play the chirps, tried in order until the microphone hears
+   * them. Some Android phones route Web Audio to the quiet earpiece once
+   * the microphone is open; an <audio> element often still plays on the
+   * loudspeaker.
+   */
+  const EAR_TRIES = [
+    { via: 'webaudio', level: 0.35 },
+    { via: 'webaudio', level: 0.9 },
+    { via: 'element', level: 0.9 },
+  ];
+
+  async function startEar() {
+    $('earVerdict').hidden = true;
+    earNotice('');
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      earNotice('This browser cannot play and record sound here. Open the page in Chrome or Safari over https.');
+      return;
+    }
+    // Created inside the tap so phones allow sound.
+    const ctx = new Ctx();
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: false,
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 },
+      });
+    } catch (e) {
+      ctx.close();
+      earNotice(e && e.name === 'NotAllowedError'
+        ? 'Microphone access was refused. Allow the microphone for this page in your browser settings.'
+        : 'The microphone could not be opened here. Open the page in Chrome or Safari over https.');
+      return;
+    }
+    try { await ctx.resume(); } catch { /* resumes on its own */ }
+
+    const sr = ctx.sampleRate, side = earSide;
+    const src = ctx.createMediaStreamSource(stream);
+    const proc = ctx.createScriptProcessor(4096, 1, 1);
+    let sink = null, now = 0, peak = 0;
+    proc.onaudioprocess = (e) => {
+      const d = e.inputBuffer.getChannelData(0);
+      let sum = 0, top = 0;
+      for (let i = 0; i < d.length; i++) { sum += d[i] * d[i]; const a = Math.abs(d[i]); if (a > top) top = a; }
+      now = Math.sqrt(sum / d.length); peak = Math.max(peak * 0.97, top);
+      if (sink) sink.push(new Float32Array(d));
+    };
+    src.connect(proc); proc.connect(ctx.destination);   // outputs silence; needed for it to run
+
+    let cancelled = false, playing = [], player = null, frame = 0;
+    const meter = () => {
+      if (cancelled) return;
+      const db = dbOf(now), pk = dbOf(peak);
+      $('micNow').style.width = `${levelPct(db)}%`;
+      $('micPeak').style.left = `${levelPct(pk)}%`;
+      $('micBar').setAttribute('aria-valuenow', String(Math.round(db)));
+      $('micText').textContent = `Microphone: ${Math.round(db)} dB now, ${Math.round(pk)} dB loudest`;
+      $('micHint').textContent = pk < -70 ? 'hearing nothing' : pk < -40 ? 'very quiet' : pk > -1 ? 'too loud' : 'hearing sound';
+      frame = requestAnimationFrame(meter);
+    };
+    meter();
+
+    const silenceMedia = () => {
+      playing.forEach((n) => { try { n.stop(); } catch { /* already stopped */ } });
+      playing = [];
+      if (player) { player.pause(); URL.revokeObjectURL(player.src); player = null; }
+    };
+    const teardown = () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      silenceMedia();
+      proc.onaudioprocess = null;
+      try { src.disconnect(); proc.disconnect(); } catch { /* already disconnected */ }
+      stream.getTracks().forEach((t) => t.stop());
+      ctx.close().catch(() => {});
+      earRun = null;
+    };
+    earRun = {
+      cancel(message) {
+        teardown(); earPhase('idle'); earStatus('Stopped. Start again when you are ready.');
+        if (message) earNotice(message);
+      },
+    };
+
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const seq = (level) => Ear.sequence(sr, { level });
+
+    /** Plays the chirps one way and returns what the microphone recorded. */
+    async function recordOnce({ via, level }) {
+      const signal = seq(level);
+      sink = [];
+      if (via === 'webaudio') {
+        const buf = ctx.createBuffer(1, signal.length, sr);
+        buf.getChannelData(0).set(signal);
+        const node = ctx.createBufferSource(); node.buffer = buf; node.connect(ctx.destination);
+        node.start(ctx.currentTime + 0.05); playing.push(node);
+      } else {
+        player = new Audio(URL.createObjectURL(new Blob([Ear.wav(signal, sr)], { type: 'audio/wav' })));
+        try { await player.play(); } catch { /* reported as not heard */ }
+      }
+      const seconds = signal.length / sr + (via === 'element' ? 0.8 : 0.3);
+      const began = performance.now();
+      while (!cancelled && performance.now() - began < seconds * 1000) {
+        $('earProgress').style.width = `${Math.min(1, (performance.now() - began) / 1000 / seconds) * 100}%`;
+        await wait(100);
+      }
+      silenceMedia();
+      const chunks = sink; sink = null;
+      const all = new Float32Array(chunks.reduce((a, c) => a + c.length, 0));
+      let o = 0; for (const c of chunks) { all.set(c, o); o += c.length; }
+      return all;
+    }
+
+    earPhase('running');
+    let r = null, tries = 0;
+    for (const attempt of EAR_TRIES) {
+      tries++;
+      earStatus(tries === 1
+        ? `Chirping into the ${side} ear. Keep still…`
+        : `Didn't hear the chirps clearly. Trying again ${attempt.via === 'element' ? 'another way' : 'louder'} (${tries} of ${EAR_TRIES.length})…`);
+      const rec = await recordOnce(attempt);
+      if (cancelled) return;
+      r = Object.assign(Ear.analyzeEcho(rec, sr), { side, via: attempt.via, attempts: tries });
+      // Only "not heard" is helped by playing louder or another way.
+      if (r.verdict === 'ok' || r.code !== 'not-heard') break;
+    }
+    teardown();
+
+    earLast = r.verdict === 'ok' ? r : null;
+    showEcho(r);
+    drawEcho();
+    if (r.verdict === 'ok') {
+      earPhase('result');
+      $('earSave').disabled = false; $('earSave').textContent = 'Save check';
+      earStatus(r.dip.depthDb >= 1
+        ? `Echo recorded: the deepest dip is ${r.dip.depthDb.toFixed(1)} dB at ${(r.dip.hz / 1000).toFixed(2)} kHz.`
+        : 'Echo recorded: the curve has no clear dip.');
+    } else {
+      earPhase('idle');
+      earStatus('No echo curve this time.');
+      earNotice(r.code === 'not-heard'
+        ? `${r.problem} Tried ${tries} ways. Tip: press the volume-up button while it chirps; some phones use the call volume when the microphone is on.`
+        : r.problem);
+    }
+  }
+
+  function renderEarHistory() {
+    const list = loadEar(), table = $('earHistory'), body = table.querySelector('tbody');
+    body.innerHTML = '';
+    for (const r of list.slice(0, 20)) {
+      const tr = document.createElement('tr');
+      const when = new Date(r.at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+      const cells = [[when, false], [r.ear === 'left' ? 'Left' : 'Right', false],
+        [r.depthDb >= 1 ? `${(r.dipHz / 1000).toFixed(2)} kHz` : '--', true], [`${r.depthDb.toFixed(1)} dB`, true]];
+      for (const [text, num] of cells) { const td = document.createElement('td'); td.textContent = text; if (num) td.className = 'num'; tr.append(td); }
+      const level = Ear.earHint(r.depthDb).level, chip = document.createElement('span');
+      chip.className = `chip ${{ clear: 'good', unclear: 'warn', flat: 'bad' }[level]}`;
+      chip.textContent = HINT[level].short;
+      const td = document.createElement('td'); td.append(chip); tr.append(td);
+      body.append(tr);
+    }
+    table.hidden = !list.length;
+    $('earNoHistory').hidden = !!list.length;
+    $('earClear').hidden = !list.length;
+  }
+
+  /** Printable cone: a 120° ring segment that rolls into a cone with an 8 mm tip. */
+  function coneSvg() {
+    const cx = 100, cy = 12, R = 100, r = 12;
+    const P = (rad, deg) => `${(cx + rad * Math.cos(deg * Math.PI / 180)).toFixed(2)} ${(cy + rad * Math.sin(deg * Math.PI / 180)).toFixed(2)}`;
+    const seg = (a, b) => `M ${P(r, a)} L ${P(R, a)} A ${R} ${R} 0 0 1 ${P(R, b)} L ${P(r, b)} A ${r} ${r} 0 0 0 ${P(r, a)} Z`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="200mm" height="150mm" viewBox="0 0 200 150" font-family="sans-serif">
+<path d="${seg(150, 162)}" fill="#eee" stroke="#000" stroke-width="0.3" stroke-dasharray="2 1.5"/>
+<path d="${seg(30, 150)}" fill="none" stroke="#000" stroke-width="0.4"/>
+<text transform="translate(${P(66, 156)}) rotate(-24)" font-size="3.2" text-anchor="middle" dominant-baseline="middle">tape here</text>
+<text x="100" y="70" font-size="5" text-anchor="middle">JeevaFlow ear cone</text>
+<text x="100" y="77" font-size="3.4" text-anchor="middle">Cut along the solid line. Roll so the narrow end is about 8 mm across.</text>
+<text x="100" y="82" font-size="3.4" text-anchor="middle">Tape the wide end over the phone's speaker and microphone.</text>
+<line x1="140" y1="138" x2="190" y2="138" stroke="#000" stroke-width="0.6"/>
+<line x1="140" y1="135.5" x2="140" y2="140.5" stroke="#000" stroke-width="0.4"/><line x1="190" y1="135.5" x2="190" y2="140.5" stroke="#000" stroke-width="0.4"/>
+<text x="165" y="145" font-size="3.4" text-anchor="middle">50 mm: check before cutting</text>
+<text x="10" y="145" font-size="3.4">Print at 100% (actual size)</text>
+</svg>`;
+  }
+
+  $('coneLink').href = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(coneSvg());
+  $('sideLeft').addEventListener('click', () => setSide('left'));
+  $('sideRight').addEventListener('click', () => setSide('right'));
+  $('earBtn').addEventListener('click', startEar);
+  $('earCancel').addEventListener('click', () => earRun && earRun.cancel());
+  $('earAgain').addEventListener('click', () => { earPhase('idle'); earNotice(''); earStatus('Choose the ear, then start.'); });
+  $('earSave').addEventListener('click', () => {
+    if (!earLast) return;
+    const list = loadEar();
+    list.unshift({
+      at: new Date().toISOString(), ear: earLast.side, dipHz: earLast.dip.hz, depthDb: Math.round(earLast.dip.depthDb * 10) / 10,
+      f0: earLast.freqs[0], step: earLast.freqs[1] - earLast.freqs[0], curve: earLast.db.map((d) => Math.round(d * 10) / 10),
+      method: 'ear-echo-v1',
+    });
+    if (saveEar(list.slice(0, 40))) {
+      $('earSave').disabled = true; $('earSave').textContent = 'Saved';
+      renderEarHistory(); drawEcho();
+    } else {
+      earNotice('This browser is not keeping data for this page (for example, a private window), so the check was not saved.');
+    }
+  });
+  $('earClear').addEventListener('click', () => { $('earClearConfirm').hidden = false; });
+  $('earClearNo').addEventListener('click', () => { $('earClearConfirm').hidden = true; });
+  $('earClearYes').addEventListener('click', () => {
+    try { localStorage.removeItem(EAR_KEY); } catch { /* nothing stored */ }
+    $('earClearConfirm').hidden = true;
+    renderEarHistory(); drawEcho();
+  });
+  renderEarHistory();
+
+  // --------------------------------------------------------------- wiring
+  $('liveBtn').addEventListener('click', startLive);
+  $('tabFinger').addEventListener('click', () => setMode('finger'));
+  $('tabFace').addEventListener('click', () => setMode('face'));
+  $('tabEar').addEventListener('click', () => setMode('ear'));
+  $('tabTremor').addEventListener('click', () => setMode('tremor'));
+  $('tabStroke').addEventListener('click', () => setMode('stroke'));
+  $('tabSleep').addEventListener('click', () => setMode('sleep'));
+  $('tabHeart').addEventListener('click', () => setMode('heart'));
+  $('videoInput').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (file) analyseVideo(file);
+  });
+  $('cancelBtn').addEventListener('click', () => {
+    stop();
+    status('Stopped. Start again when you are ready.');
+    els.chip.textContent = 'Stopped'; els.chip.className = 'chip';
+  });
+  $('againBtn').addEventListener('click', () => { setPhase('idle'); notice(''); status('Choose how to measure.'); });
+  els.saveBtn.addEventListener('click', () => {
+    if (!lastResult) return;
+    const list = loadHistory();
+    list.unshift({
+      at: new Date().toISOString(), bpm: Math.round(lastResult.heartRate),
+      hrv: lastResult.rmssdMs == null ? null : Math.round(lastResult.rmssdMs),
+      quality: Math.round(lastResult.quality * 100), method: lastResult.method,
+      rhythm: lastResult.rhythm || null,
+    });
+    if (saveHistory(list.slice(0, 50))) {
+      els.saveBtn.disabled = true; els.saveBtn.textContent = 'Saved';
+      lastResult = null;
+      renderHistory();
+    } else {
+      notice('This browser is not keeping data for this page (for example, a private window), so the reading was not saved.');
+    }
+  });
+  $('clearBtn').addEventListener('click', () => { $('clearConfirm').hidden = false; });
+  $('clearNo').addEventListener('click', () => { $('clearConfirm').hidden = true; });
+  $('clearYes').addEventListener('click', () => {
+    try { localStorage.removeItem(STORE_KEY); } catch { /* nothing stored */ }
+    $('clearConfirm').hidden = true;
+    renderHistory();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && earRun) earRun.cancel('The ear check stopped because the page was hidden. Start again when ready.');
+    if (document.hidden && run && run.mode === 'live') {
+      stop();
+      notice('The check stopped because the page was hidden. Start again when ready.');
+    }
+  });
+  window.addEventListener('resize', () => { if (lastShown) showResult(lastShown.r, lastShown.o); if (mode === 'ear') drawEcho(); });
+
+  // Opening state: an example reading from a synthetic 72 bpm pulse,
+  // marked "Example reading" until the viewer measures their own.
+  function exampleSamples() {
+    let seed = 5;
+    const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const out = [];
+    for (let t = 0; t <= 30000; t += 33.3) {
+      let pulse = 0;
+      for (let b = 300, k = 0; b < 32000; b += 833 + 30 * Math.sin(k++ * 1.9)) {
+        const d = t - b;
+        if (d > -400 && d < 900) pulse += Math.exp(-((d / 70) ** 2)) + 0.35 * Math.exp(-(((d - 330) / 90) ** 2));
+      }
+      out.push({ t, red: 200 - 1.2 * pulse + 0.4 * Math.sin(t / 650) + 0.1 * (rand() - 0.5), green: 40 });
+    }
+    return out;
+  }
+  let lastShown = null;
+  const origShow = showResult;
+  showResult = (r, o) => { lastShown = { r, o }; origShow(r, o); };
+  showResult(Ppg.analyze(exampleSamples()), { example: true });
+  renderHistory();
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (lastShown) origShow(lastShown.r, lastShown.o); if (mode === 'ear') drawEcho(); });
+})();
+</script>
+
+</body></html>

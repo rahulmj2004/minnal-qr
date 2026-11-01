@@ -13,6 +13,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
 import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -37,6 +38,8 @@ import java.util.Locale;
 public class MainActivity extends Activity {
     private static final String DEFAULT_SERVER = "http://192.168.13.105:8077";
     private static final int REQ_LOCATION = 7;
+    private static final int REQ_MEDIA = 8;
+    private PermissionRequest pendingMedia;
 
     private WebView web;
     private SharedPreferences prefs;
@@ -65,7 +68,20 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
         web.addJavascriptInterface(new Bridge(), "MinnalApp");
-        web.setWebChromeClient(new WebChromeClient());
+        web.setWebChromeClient(new WebChromeClient() {
+            // JeevaFlow vitals (camera pulse, stroke check, speech) ask for camera/microphone.
+            @Override public void onPermissionRequest(final PermissionRequest req) {
+                runOnUiThread(() -> {
+                    if (Build.VERSION.SDK_INT >= 23 && (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED
+                            || checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)) {
+                        pendingMedia = req;
+                        requestPermissions(new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO}, REQ_MEDIA);
+                    } else {
+                        req.grant(req.getResources());
+                    }
+                });
+            }
+        });
         web.setWebViewClient(new WebViewClient() {
             @Override public void onPageFinished(WebView v, String url) { if (last != null) push(last); }
             @Override public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
@@ -134,6 +150,11 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
         if (code == REQ_LOCATION && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) startLocation();
+        if (code == REQ_MEDIA && pendingMedia != null) {
+            boolean ok = results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED;
+            if (ok) pendingMedia.grant(pendingMedia.getResources()); else pendingMedia.deny();
+            pendingMedia = null;
+        }
     }
 
     private void push(Location loc) {
